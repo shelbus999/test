@@ -4408,7 +4408,12 @@ local function getPingMultiplier()
 end
 
 local function fbpos(fbtingy)
-    local id = tostring(fbtingy:GetDebugId())
+    local id
+    if fbtingy.GetDebugId then
+        id = tostring(fbtingy:GetDebugId())
+    else
+        id = tostring(fbtingy) .. tostring(fbtingy:GetFullName())
+    end
     local b4now = posCache[id]
     local rn = fbtingy.Position
     posCache[id] = rn
@@ -4432,7 +4437,12 @@ end
 
 local function udfr(fbtingy)
     theonern = fbtingy
-    local id = tostring(fbtingy:GetDebugId())
+    local id
+    if fbtingy.GetDebugId then
+        id = tostring(fbtingy:GetDebugId())
+    else
+        id = tostring(fbtingy) .. tostring(fbtingy:GetFullName())
+    end
     posCache[id] = fbtingy.Position
 end
 
@@ -4465,14 +4475,21 @@ end)
 -- OPTIMIZED: Non-blocking initial football search to prevent freeze
 task.spawn(function()
     task.wait(0.1) -- Small delay to prevent blocking on round start
-    for _, d in next, workspace:GetDescendants() do
-        if isFootball(d) then
-            udfr(d)
-            if d.Parent and d.Parent:IsA('Model') and game.Players:GetPlayerFromCharacter(d.Parent) then
-                ifsm1gotfb = true
+    pcall(function()
+        for _, d in next, workspace:GetDescendants() do
+            if isFootball and isFootball(d) then
+                if udfr then
+                    udfr(d)
+                end
+                if d.Parent and d.Parent:IsA('Model') and game.Players and game.Players.GetPlayerFromCharacter then
+                    local player = game.Players:GetPlayerFromCharacter(d.Parent)
+                    if player then
+                        ifsm1gotfb = true
+                    end
+                end
             end
         end
-    end
+    end)
 end)
 
 local oind
