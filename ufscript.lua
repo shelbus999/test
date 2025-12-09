@@ -4742,7 +4742,11 @@ end
         end
     })
 
-    local WalkSpeedGroup = Tabs.Player:AddSection('WalkSpeed', 1, 1)
+    local WalkSpeedGroup = Tabs.Player:AddSection('WalkSpeed', 1)
+    
+    if not WalkSpeedGroup then
+        error("Failed to create WalkSpeedGroup section")
+    end
 
     WalkSpeedGroup:AddList({
         enabled = true,
