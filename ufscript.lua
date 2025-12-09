@@ -1960,10 +1960,12 @@ end
             local oind
             if hookmetamethod then
                 oind = hookmetamethod(game, '__index', function(self, key)
-                    if magnetEnabled and not checkcaller() and key == 'CFrame' and self == hrp and prvnt then
+                    if magnetEnabled and (not checkcaller or not checkcaller()) and key == 'CFrame' and self == hrp and prvnt then
                         return og1
                     end
-                    return oind(self, key)
+                    if oind then
+                        return oind(self, key)
+                    end
                 end)
             end
 
@@ -4476,10 +4478,12 @@ end)
 local oind
 if hookmetamethod then
     oind = hookmetamethod(game, '__index', function(self, key)
-        if magnetEnabled and not checkcaller() and key == 'CFrame' and self == hrp and prvnt then
+        if magnetEnabled and (not checkcaller or not checkcaller()) and key == 'CFrame' and self == hrp and prvnt then
             return og1
         end
-        return oind(self, key)
+        if oind then
+            return oind(self, key)
+        end
     end)
 end
 
