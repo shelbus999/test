@@ -3116,6 +3116,8 @@ else
     local playerHitboxConnection = nil
 
     local speedMethod = "WalkSpeed"
+    local cframeMultiplier = 5
+    local walkSpeedValue = 25
     local diveBoostConnection = nil
     local flyBodyVelocity = nil
     local flyBodyGyro = nil
@@ -4742,16 +4744,19 @@ end
 
     local WalkSpeedGroup = Tabs.Player:AddSection('WalkSpeed', 1, 1)
 
-    WalkSpeedGroup:AddDropdown('SpeedMethod', {
-        Values = { 'WalkSpeed', 'CFrame' },
-        Default = 1,
-        Multi = false,
-        Text = 'Speed Method',
-        Tooltip = 'Choose how speed boost works',
-    })
-
-    Options.SpeedMethod:OnChanged(function()
-        speedMethod = Options.SpeedMethod.Value
+    WalkSpeedGroup:AddList({
+        enabled = true,
+        text = 'Speed Method',
+        flag = 'SpeedMethod',
+        multi = false,
+        tooltip = 'Choose how speed boost works',
+        risky = false,
+        dragging = false,
+        focused = false,
+        value = 'WalkSpeed',
+        values = { 'WalkSpeed', 'CFrame' },
+        callback = function(value)
+            speedMethod = value
         
         -- Clean up old connections
         if walkSpeedConnection then
@@ -4775,16 +4780,16 @@ end
                     
                     local moveDir = hum.MoveDirection
                     if moveDir.Magnitude > 0 then
-                        root.CFrame = root.CFrame + (moveDir * Options.CFrameMultiplier.Value * dt)
+                        root.CFrame = root.CFrame + (moveDir * cframeMultiplier * dt)
                     end
                 end)
             else
                 local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
                 if humanoid then
-                    humanoid.WalkSpeed = Options.WalkSpeedValue.Value
+                    humanoid.WalkSpeed = walkSpeedValue
                     walkSpeedConnection = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
                         if walkSpeedEnabled then
-                            humanoid.WalkSpeed = Options.WalkSpeedValue.Value
+                            humanoid.WalkSpeed = walkSpeedValue
                         end
                     end)
                 end
@@ -4803,7 +4808,7 @@ end
         tooltip = "",
         risky = false,
         callback = function(value)
-            -- CFrame multiplier callback
+            cframeMultiplier = value
         end
     })
 
@@ -4826,7 +4831,7 @@ end
             end
             
             if value then
-                if Options.SpeedMethod.Value == "CFrame" then
+                if speedMethod == "CFrame" then
                     cframeSpeedConnection = RunService.RenderStepped:Connect(function(dt)
                         local char = plr.Character
                         if not char then return end
@@ -4837,16 +4842,16 @@ end
                         local moveDir = hum.MoveDirection
                         if moveDir.Magnitude > 0 then
                             local baseSpeed = hum.WalkSpeed or 16
-                            root.CFrame = root.CFrame + (moveDir.Unit * baseSpeed * Options.CFrameMultiplier.Value * dt)
+                            root.CFrame = root.CFrame + (moveDir.Unit * baseSpeed * cframeMultiplier * dt)
                         end
                     end)
                 else
                     local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
                     if humanoid then
-                        humanoid.WalkSpeed = Options.WalkSpeedValue.Value
+                        humanoid.WalkSpeed = walkSpeedValue
                         walkSpeedConnection = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
                             if walkSpeedEnabled then
-                                humanoid.WalkSpeed = Options.WalkSpeedValue.Value
+                                humanoid.WalkSpeed = walkSpeedValue
                             end
                         end)
                     end
@@ -4871,22 +4876,17 @@ end
         tooltip = "",
         risky = false,
         callback = function(value)
-            -- WalkSpeed value callback
+            walkSpeedValue = value
+            if walkSpeedEnabled and speedMethod == "WalkSpeed" then
+                local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid.WalkSpeed = walkSpeedValue
+                end
+            end
         end
     })
 
-    Options.WalkSpeedValue:OnChanged(function()
-        if walkSpeedEnabled and Options.SpeedMethod.Value == "WalkSpeed" then
-            local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
-            if humanoid then
-                humanoid.WalkSpeed = Options.WalkSpeedValue.Value
-            end
-        end
-    end)
-
-    Options.CFrameMultiplier:OnChanged(function()
-        -- CFrame multiplier updates automatically in the RenderStepped loop
-    end)
+    -- Note: Options:OnChanged removed - using callback functions in AddSlider/AddList instead
 
     local JumpPowerGroup = Tabs.Player:AddSection('JumpPower')
 
