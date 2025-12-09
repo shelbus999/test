@@ -4671,15 +4671,17 @@ end
         end
     })
 
-    LegitPullGroup:AddSlider('MagnetSmoothness', {
-        Text = 'Vector Smoothing',
-        Default = 0.20,
-        Min = 0.01,
-        Max = 1.0,
-        Rounding = 2,
-        Compact = false,
-        Tooltip = 'Lower = smoother, Higher = faster',
-        Callback = function(value)
+    LegitPullGroup:AddSlider({
+        text = 'Vector Smoothing',
+        flag = 'MagnetSmoothness',
+        suffix = "",
+        min = 0.01,
+        max = 1.0,
+        increment = 0.01,
+        value = 0.20,
+        tooltip = 'Lower = smoother, Higher = faster',
+        risky = false,
+        callback = function(value)
             magnetSmoothness = value
         end
     })
@@ -4708,15 +4710,17 @@ end
         end
     })
 
-    PullVectorGroup:AddSlider('OffsetDistance', {
-        Text = 'Offset Distance',
-        Default = 15,
-        Min = 0,
-        Max = 30,
-        Rounding = 0,
-        Compact = false,
-        Tooltip = 'Distance in front of the ball',
-        Callback = function(value)
+    PullVectorGroup:AddSlider({
+        text = 'Offset Distance',
+        flag = 'OffsetDistance',
+        suffix = "",
+        min = 0,
+        max = 30,
+        increment = 1,
+        value = 15,
+        tooltip = 'Distance in front of the ball',
+        risky = false,
+        callback = function(value)
             offsetDistance = value
         end
     })
@@ -4788,13 +4792,19 @@ end
         end
     end)
 
-    WalkSpeedGroup:AddSlider('CFrameMultiplier', {
-        Text = 'CFrame Speed Multiplier',
-        Default = 5,
-        Min = 0.01,
-        Max = 10,
-        Rounding = 2,
-        Compact = false,
+    WalkSpeedGroup:AddSlider({
+        text = 'CFrame Speed Multiplier',
+        flag = 'CFrameMultiplier',
+        suffix = "",
+        min = 0.01,
+        max = 10,
+        increment = 0.01,
+        value = 5,
+        tooltip = "",
+        risky = false,
+        callback = function(value)
+            -- CFrame multiplier callback
+        end
     })
 
     WalkSpeedGroup:AddToggle({
@@ -4850,13 +4860,19 @@ end
         end
     })
 
-    WalkSpeedGroup:AddSlider('WalkSpeedValue', {
-        Text = 'WalkSpeed Value',
-        Default = 25,
-        Min = 16,
-        Max = 35,
-        Rounding = 0,
-        Compact = false,
+    WalkSpeedGroup:AddSlider({
+        text = 'WalkSpeed Value',
+        flag = 'WalkSpeedValue',
+        suffix = "",
+        min = 16,
+        max = 35,
+        increment = 1,
+        value = 25,
+        tooltip = "",
+        risky = false,
+        callback = function(value)
+            -- WalkSpeed value callback
+        end
     })
 
     Options.WalkSpeedValue:OnChanged(function()
@@ -4897,14 +4913,17 @@ end
         end
     })
 
-    JumpPowerGroup:AddSlider('JumpPowerValue', {
-        Text = 'Custom JumpPower',
-        Default = 50,
-        Min = 10,
-        Max = 200,
-        Rounding = 0,
-        Compact = false,
-        Callback = function(value)
+    JumpPowerGroup:AddSlider({
+        text = 'Custom JumpPower',
+        flag = 'JumpPowerValue',
+        suffix = "",
+        min = 10,
+        max = 200,
+        increment = 1,
+        value = 50,
+        tooltip = "",
+        risky = false,
+        callback = function(value)
             customJumpPower = value
         end
     })
@@ -4970,14 +4989,17 @@ end
         end
     })
 
-    FlyGroup:AddSlider('FlySpeed', {
-        Text = 'Fly Speed',
-        Default = 50,
-        Min = 10,
-        Max = 200,
-        Rounding = 0,
-        Compact = false,
-        Callback = function(value)
+    FlyGroup:AddSlider({
+        text = 'Fly Speed',
+        flag = 'FlySpeed',
+        suffix = "",
+        min = 10,
+        max = 200,
+        increment = 1,
+        value = 50,
+        tooltip = "",
+        risky = false,
+        callback = function(value)
             flySpeed = value
         end
     })
@@ -4986,11 +5008,11 @@ end
 
     StaminaGroup:AddToggle({
         enabled = true,
+        text = '(High Unc) Stamina Depletion',
         flag = 'StaminaDepletion',
-        Text = '(High Unc) Stamina Depletion',
-        Default = false,
-        Tooltip = 'Reduces stamina depletion rate',
-        Callback = function(enabled)
+        tooltip = 'Reduces stamina depletion rate',
+        risky = false,
+        callback = function(enabled)
             staminaDepletionEnabled = enabled
             spawn(function()
                 while staminaDepletionEnabled do
@@ -5007,15 +5029,17 @@ end
         end
     })
 
-    StaminaGroup:AddSlider('StaminaDepletionRate', {
-        Text = 'Stamina Depletion Rate',
-        Default = 1,
-        Min = 1,
-        Max = 100,
-        Rounding = 1,
-        Compact = false,
-        Tooltip = 'Higher = lower depletion',
-        Callback = function(value)
+    StaminaGroup:AddSlider({
+        text = 'Stamina Depletion Rate',
+        flag = 'StaminaDepletionRate',
+        suffix = "",
+        min = 1,
+        max = 100,
+        increment = 1,
+        value = 1,
+        tooltip = 'Higher = lower depletion',
+        risky = false,
+        callback = function(value)
             staminaDepletionRate = value
         end
     })
@@ -5114,28 +5138,32 @@ end
         end
     })
 
-    JumpBoostGroup:AddSlider('BoostForce', {
-        Text = 'Boost Force',
-        Default = 32,
-        Min = 10,
-        Max = 100,
-        Rounding = 0,
-        Compact = false,
-        Tooltip = 'How high you get boosted',
-        Callback = function(value)
+    JumpBoostGroup:AddSlider({
+        text = 'Boost Force',
+        flag = 'BoostForce',
+        suffix = "",
+        min = 10,
+        max = 100,
+        increment = 1,
+        value = 32,
+        tooltip = 'How high you get boosted',
+        risky = false,
+        callback = function(value)
             BOOST_FORCE_Y = value
         end
     })
 
-    JumpBoostGroup:AddSlider('BoostCooldown', {
-        Text = 'Boost Cooldown',
-        Default = 1,
-        Min = 0.1,
-        Max = 5,
-        Rounding = 1,
-        Compact = false,
-        Tooltip = 'Cooldown between boosts (seconds)',
-        Callback = function(value)
+    JumpBoostGroup:AddSlider({
+        text = 'Boost Cooldown',
+        flag = 'BoostCooldown',
+        suffix = "",
+        min = 0.1,
+        max = 5,
+        increment = 0.1,
+        value = 1,
+        tooltip = 'Cooldown between boosts (seconds)',
+        risky = false,
+        callback = function(value)
             BOOST_COOLDOWN = value
         end
     })
@@ -5164,28 +5192,32 @@ end
         end
     })
 
-    DiveBoostGroup:AddSlider('DiveBoostPower', {
-        Text = 'Dive Power',
-        Default = 2.2,
-        Min = 2.2,
-        Max = 10,
-        Rounding = 1,
-        Compact = false,
-        Tooltip = 'How far you dive (default: 2.2)',
-        Callback = function(value)
+    DiveBoostGroup:AddSlider({
+        text = 'Dive Power',
+        flag = 'DiveBoostPower',
+        suffix = "",
+        min = 2.2,
+        max = 10,
+        increment = 0.1,
+        value = 2.2,
+        tooltip = 'How far you dive (default: 2.2)',
+        risky = false,
+        callback = function(value)
             diveBoostPower = value
         end
     })
 
-    DiveBoostGroup:AddSlider('DiveBoostCooldown', {
-        Text = 'Dive Boost Cooldown',
-        Default = 2,
-        Min = 0.1,
-        Max = 5,
-        Rounding = 1,
-        Compact = false,
-        Tooltip = 'Cooldown between dive boosts (seconds)',
-        Callback = function(value)
+    DiveBoostGroup:AddSlider({
+        text = 'Dive Boost Cooldown',
+        flag = 'DiveBoostCooldown',
+        suffix = "",
+        min = 0.1,
+        max = 5,
+        increment = 0.1,
+        value = 2,
+        tooltip = 'Cooldown between dive boosts (seconds)',
+        risky = false,
+        callback = function(value)
             DIVE_BOOST_COOLDOWN = value
         end
     })
@@ -5239,28 +5271,32 @@ end
         end
     })
 
-    BigHeadGroup:AddSlider('BigheadSize', {
-        Text = 'Head Size',
-        Default = 1,
-        Min = 1,
-        Max = 10,
-        Rounding = 1,
-        Compact = false,
-        Tooltip = 'Size multiplier for head',
-        Callback = function(value)
+    BigHeadGroup:AddSlider({
+        text = 'Head Size',
+        flag = 'BigheadSize',
+        suffix = "",
+        min = 1,
+        max = 10,
+        increment = 0.1,
+        value = 1,
+        tooltip = 'Size multiplier for head',
+        risky = false,
+        callback = function(value)
             bigheadSize = value
         end
     })
 
-    BigHeadGroup:AddSlider('BigheadTransparency', {
-        Text = 'Head Transparency',
-        Default = 0.5,
-        Min = 0,
-        Max = 1,
-        Rounding = 2,
-        Compact = false,
-        Tooltip = 'Adjust the transparency of enlarged heads',
-        Callback = function(value)
+    BigHeadGroup:AddSlider({
+        text = 'Head Transparency',
+        flag = 'BigheadTransparency',
+        suffix = "",
+        min = 0,
+        max = 1,
+        increment = 0.01,
+        value = 0.5,
+        tooltip = 'Adjust the transparency of enlarged heads',
+        risky = false,
+        callback = function(value)
             bigheadTransparency = value
         end
     })
@@ -5329,15 +5365,17 @@ end
         end
     })
 
-    TackleReachGroup:AddSlider('TackleReachDistance', {
-        Text = 'Reach Distance',
-        Default = 5,
-        Min = 1,
-        Max = 10,
-        Rounding = 1,
-        Compact = false,
-        Tooltip = 'Maximum distance for tackle reach',
-        Callback = function(value)
+    TackleReachGroup:AddSlider({
+        text = 'Reach Distance',
+        flag = 'TackleReachDistance',
+        suffix = "",
+        min = 1,
+        max = 10,
+        increment = 0.1,
+        value = 5,
+        tooltip = 'Maximum distance for tackle reach',
+        risky = false,
+        callback = function(value)
             tackleReachDistance = value
         end
     })
@@ -5432,26 +5470,31 @@ end
         end
     })
 
-    PlayerHitboxGroup:AddSlider('PlayerHitboxSize', {
-        Text = 'Hitbox Size',
-        Default = 5,
-        Min = 2,
-        Max = 50,
-        Rounding = 1,
-        Compact = false,
-        Tooltip = 'Size of player hitboxes',
-        Callback = function(value)
+    PlayerHitboxGroup:AddSlider({
+        text = 'Hitbox Size',
+        flag = 'PlayerHitboxSize',
+        suffix = "",
+        min = 2,
+        max = 50,
+        increment = 1,
+        value = 5,
+        tooltip = 'Size of player hitboxes',
+        risky = false,
+        callback = function(value)
             playerHitboxSize = value
         end
     })
 
-    PlayerHitboxGroup:AddSlider('PlayerHitboxTransparency', {
-        Text = 'Hitbox Transparency',
-        Default = 0.7,
-        Min = 0,
-        Max = 1,
-        Rounding = 1,
-        Compact = false,
+    PlayerHitboxGroup:AddSlider({
+        text = 'Hitbox Transparency',
+        flag = 'PlayerHitboxTransparency',
+        suffix = "",
+        min = 0,
+        max = 1,
+        increment = 0.01,
+        value = 0.7,
+        tooltip = "",
+        risky = false,
         Tooltip = 'Transparency of player hitboxes (0 = visible, 1 = invisible)',
         Callback = function(value)
             playerHitboxTransparency = value
@@ -5493,15 +5536,17 @@ end
         end
     })
 
-    AutoRushGroup:AddSlider('AutoFollowBlatancy', {
-        Text = 'Follow Blatancy',
-        Default = 0.5,
-        Min = 0,
-        Max = 1,
-        Rounding = 2,
-        Compact = false,
-        Tooltip = 'How aggressive the auto-follow predicts/cuts off the ball carrier',
-        Callback = function(value)
+    AutoRushGroup:AddSlider({
+        text = 'Follow Blatancy',
+        flag = 'AutoFollowBlatancy',
+        suffix = "",
+        min = 0,
+        max = 1,
+        increment = 0.01,
+        value = 0.5,
+        tooltip = 'How aggressive the auto-follow predicts/cuts off the ball carrier',
+        risky = false,
+        callback = function(value)
             autoFollowBlatancy = value
         end
     })
@@ -5990,15 +6035,17 @@ AutoCatch:AddToggle({
     end
 })
 
-AutoCatch:AddSlider('AutoCatchSlider', {
-    Text = 'Radius',
-    Default = 0,
-    Min = 0,
-    Max = 35,
-    Rounding = 2,
-    Compact = false,
-    Tooltip = 'The radius for auto catch to click',
-    Callback = function(value)
+AutoCatch:AddSlider({
+    text = 'Radius',
+    flag = 'AutoCatchSlider',
+    suffix = "",
+    min = 0,
+    max = 35,
+    increment = 0.1,
+    value = 0,
+    tooltip = 'The radius for auto catch to click',
+    risky = false,
+    callback = function(value)
         autoCatchRadius = value
     end
 })
