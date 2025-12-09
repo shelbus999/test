@@ -1557,11 +1557,13 @@ if hookmetamethod then
     end)
 end
 
-MainTab:CreateToggle({
-    Name = "QB Aimbot",
-    CurrentValue = false,
-    Flag = "QBAimbot",
-    Callback = function(Value)
+MainTab:AddToggle({
+    enabled = true,
+    text = "QB Aimbot",
+    flag = "QBAimbot",
+    tooltip = "",
+    risky = false,
+    callback = function(Value)
         qbAimbotEnabled = Value
         if not Value then
             UpdateTargetHighlight(nil)
@@ -1579,11 +1581,13 @@ MainTab:CreateToggle({
     end,
 })
 
-MainTab:CreateToggle({
-    Name = "Highlight Target",
-    CurrentValue = false,
-    Flag = "QBHighlight",
-    Callback = function(Value)
+MainTab:AddToggle({
+    enabled = true,
+    text = "Highlight Target",
+    flag = "QBHighlight",
+    tooltip = "",
+    risky = false,
+    callback = function(Value)
         qbHighlightEnabled = Value
         if not Value then
             UpdateTargetHighlight(nil)
@@ -1591,11 +1595,13 @@ MainTab:CreateToggle({
     end,
 })
 
-MainTab:CreateToggle({
-    Name = "Show Trajectory Line",
-    CurrentValue = false,
-    Flag = "QBTrajectory",
-    Callback = function(Value)
+MainTab:AddToggle({
+    enabled = true,
+    text = "Show Trajectory Line",
+    flag = "QBTrajectory",
+    tooltip = "",
+    risky = false,
+    callback = function(Value)
         qbTrajectoryEnabled = Value
         if not Value then
             clearAkiBeam()
@@ -1603,13 +1609,17 @@ MainTab:CreateToggle({
     end,
 })
 
-MainTab:CreateSlider({
-    Name = "Max Air Time",
-    Range = {1, 10},
-    Increment = 1,
-    CurrentValue = 3,
-    Flag = "MaxAirTime",
-    Callback = function(Value)
+MainTab:AddSlider({
+    text = "Max Air Time",
+    flag = "MaxAirTime",
+    suffix = "",
+    min = 1,
+    max = 10,
+    increment = 1,
+    value = 3,
+    tooltip = "",
+    risky = false,
+    callback = function(Value)
         qbMaxAirTime = Value
     end,
 })
@@ -2050,22 +2060,28 @@ end
                 end,
             })
             
-            local MagnetDistSlider = MainTab:CreateSlider({
-                Name = "Magnet Distance",
-                Range = {0, 120},
-                Increment = 1,
-                CurrentValue = 120,
-                Flag = "FootballDistance",
-                Callback = function(Value)
+            MagnetSection:AddSlider({
+                text = "Magnet Distance",
+                flag = "FootballDistance",
+                suffix = "",
+                min = 0,
+                max = 120,
+                increment = 1,
+                value = 120,
+                tooltip = "",
+                risky = false,
+                callback = function(Value)
                     magnetDistance = Value
                 end,
             })
             
-            local ShowHitboxToggle = MainTab:CreateToggle({
-                Name = "Show Hitbox",
-                CurrentValue = false,
-                Flag = "ShowHitbox",
-                Callback = function(Value)
+            MagnetSection:AddToggle({
+                enabled = true,
+                text = "Show Hitbox",
+                flag = "ShowHitbox",
+                tooltip = "",
+                risky = false,
+                callback = function(Value)
                     showHitbox = Value
                     if not Value then
                         removeHitbox()
@@ -2074,13 +2090,15 @@ end
             })
         end
 
-    local LegitSection = MainTab:CreateSection("Legit Pull Vector")
+    local LegitSection = MainTab:AddSection("Legit Pull Vector", 1, 2)
     
-    local LegitPullToggle = MainTab:CreateToggle({
-        Name = "Legit Pull Vector",
-        CurrentValue = false,
-        Flag = "LegitPull",
-        Callback = function(Value)
+    LegitSection:AddToggle({
+        enabled = true,
+        text = "Legit Pull Vector",
+        flag = "LegitPull",
+        tooltip = "",
+        risky = false,
+        callback = function(Value)
             smoothPullEnabled = Value
             
             if mobileInputMethod == "Buttons" or mobileInputMethod == "Both" then
@@ -2091,24 +2109,30 @@ end
         end,
     })
     
-    local SmoothSlider = MainTab:CreateSlider({
-        Name = "Vector Smoothing",
-        Range = {0.01, 1},
-        Increment = 0.01,
-        CurrentValue = 0.20,
-        Flag = "Smoothness",
-        Callback = function(Value)
+    LegitSection:AddSlider({
+        text = "Vector Smoothing",
+        flag = "Smoothness",
+        suffix = "",
+        min = 0.01,
+        max = 1,
+        increment = 0.01,
+        value = 0.20,
+        tooltip = "",
+        risky = false,
+        callback = function(Value)
             magnetSmoothness = Value
         end,
     })
     
-    local PullSection = MainTab:CreateSection("Pull Vector")
+    local PullSection = MainTab:AddSection("Pull Vector", 2, 1)
     
-    local PullToggle = MainTab:CreateToggle({
-        Name = "Pull Vector",
-        CurrentValue = false,
-        Flag = "PullVector",
-        Callback = function(Value)
+    PullSection:AddToggle({
+        enabled = true,
+        text = "Pull Vector",
+        flag = "PullVector",
+        tooltip = "",
+        risky = false,
+        callback = function(Value)
             pullVectorEnabled = Value
             
             if mobileInputMethod == "Buttons" or mobileInputMethod == "Both" then
@@ -2119,24 +2143,32 @@ end
         end,
     })
     
-    local OffsetSlider = MainTab:CreateSlider({
-        Name = "Offset Distance",
-        Range = {0, 30},
-        Increment = 1,
-        CurrentValue = 15,
-        Flag = "Offset",
-        Callback = function(Value)
+    PullSection:AddSlider({
+        text = "Offset Distance",
+        flag = "Offset",
+        suffix = "",
+        min = 0,
+        max = 30,
+        increment = 1,
+        value = 15,
+        tooltip = "",
+        risky = false,
+        callback = function(Value)
             offsetDistance = Value
         end,
     })
     
-    local MaxDistSlider = MainTab:CreateSlider({
-        Name = "Max Pull Distance",
-        Range = {1, 100},
-        Increment = 1,
-        CurrentValue = 35,
-        Flag = "MaxDist",
-        Callback = function(Value)
+    PullSection:AddSlider({
+        text = "Max Pull Distance",
+        flag = "MaxDist",
+        suffix = "",
+        min = 1,
+        max = 100,
+        increment = 1,
+        value = 35,
+        tooltip = "",
+        risky = false,
+        callback = function(Value)
             maxPullDistance = Value
         end,
     })
