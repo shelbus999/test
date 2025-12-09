@@ -1,475 +1,8 @@
--- CRITICAL: Apply global Visible property protection BEFORE anything else loads
--- This prevents "attempt to index number with 'Visible'" errors from UI libraries
---
--- IMPORTANT NOTE: Some errors may still appear in Roblox's console because:
--- 1. They originate in Roblox's internal CoreGui.EventConnection code (which we cannot modify)
--- 2. Roblox's console logs errors directly, bypassing our error suppression
--- 3. The UI library (Rayfield/LinoriaLib) has internal bugs that trigger these errors
---
--- These errors are COSMETIC ONLY and do not affect script functionality.
--- The script will work correctly despite these console messages.
-
--- AGGRESSIVE ERROR SUPPRESSION - Must be first to catch all errors
--- This suppresses errors at the console output level since we can't prevent them at source
-do
-    -- Override console output functions to filter errors
-    -- ULTRA-AGGRESSIVE: Suppress ALL CoreGui errors regardless of line numbers or specific error types
-    local function shouldSuppressError(msg)
-        if type(msg) ~= "string" then return false end
-        local msgLower = msg:lower()
-        
-        -- Suppress ANY error that mentions CoreGui (catches all variations)
-        if msgLower:find("coregui") then
-            return true -- Suppress ALL CoreGui errors
-        end
-        
-        -- Also suppress Visible errors on numbers (even if CoreGui not mentioned)
-        if msgLower:find("visible") and msgLower:find("number") then
-            return true
-        end
-        
-        -- Suppress EventConnection errors (specific to the error we're seeing)
-        if msgLower:find("eventconnection") then
-            return true
-        end
-        
-        -- Suppress "attempt to call a nil value" errors (common CoreGui error)
-        if msgLower:find("attempt to call a nil") then
-            return true
-        end
-        
-        -- Suppress __newindex errors (property assignment errors)
-        if msgLower:find("__newindex") then
-            return true
-        end
-        
-        -- Suppress errors from CoreGui.520 scripts (the specific scripts causing errors)
-        if msgLower:find("coregui%.520") or msgLower:find("coregui520") or msgLower:find("coregui%.520%.") then
-            return true
-        end
-        
-        -- Suppress errors mentioning "loadstring" in CoreGui context
-        if msgLower:find("loadstring") and msgLower:find("coregui") then
-            return true
-        end
-        
-        -- Suppress any error with line numbers in CoreGui scripts (format: CoreGui.XXX:LINE)
-        if msgLower:match("coregui%.[%w%.]+:%d+") then
-            return true
-        end
-        
-        -- Suppress specific error patterns we're seeing:
-        -- "CoreGui.RobloxGui.Modules.Common.EventConnection:4351: attempt to index number with 'Visible'"
-        if msgLower:find("robloxgui%.modules%.common%.eventconnection") then
-            return true
-        end
-        
-        -- Suppress errors with specific line numbers that match known problematic patterns
-        if msgLower:find(":4351") or msgLower:find(":4248") or msgLower:find(":3531") then
-            if msgLower:find("coregui") or msgLower:find("visible") or msgLower:find("nil value") then
-                return true
-            end
-        end
-        
-        -- Suppress "attempt to index" errors (broader pattern)
-        if msgLower:find("attempt to index") then
-            return true
-        end
-        
-        return false
-    end
-    
-    -- Suppress in warn
-    local originalWarn = warn
-    warn = function(...)
-        local args = {...}
-        for i = 1, #args do
-            if shouldSuppressError(tostring(args[i] or "")) then
-                return -- Suppress this error
-            end
-        end
-        return originalWarn(...)
-    end
-    
-    -- Suppress in print
-    local originalPrint = print
-    print = function(...)
-        local args = {...}
-        for i = 1, #args do
-            if shouldSuppressError(tostring(args[i] or "")) then
-                return -- Suppress this error
-            end
-        end
-        return originalPrint(...)
-    end
-    
-    -- Try to hook into error() function if possible
-    local originalError = error
-    error = function(msg, level)
-        if shouldSuppressError(tostring(msg or "")) then
-            return -- Suppress
-        end
-        return originalError(msg, level)
-    end
-    
-    -- FINAL ATTEMPT: Override xpcall to catch ALL errors including CoreGui ones
-    if xpcall then
-        local originalXpcall = xpcall
-        xpcall = function(func, errHandler, ...)
-            local args = {...}
-            local unpackFunc = unpack or table.unpack
-            return originalXpcall(function()
-                return func(unpackFunc(args))
-            end, function(err)
-                if shouldSuppressError(tostring(err or "")) then
-                    return -- Suppress CoreGui errors
-                end
-                return errHandler(err)
-            end)
-        end
-    end
-    
-    -- CRITICAL: Hook into LogService to intercept console messages at the source
-    -- This is the lowest level we can intercept in Lua
-    task.spawn(function()
-        task.wait(0.1) -- Wait for services to initialize
-        local success, LogService = pcall(function()
-            return game:GetService("LogService")
-        end)
-        if success and LogService then
-            -- Hook into message output
-            local originalMessageOut = LogService.MessageOut
-            if originalMessageOut then
-                LogService.MessageOut:Connect(function(message, messageType)
-                    if messageType == Enum.MessageType.MessageError or messageType == Enum.MessageType.MessageWarning then
-                        if shouldSuppressError(tostring(message or "")) then
-                            -- Suppress by not processing the message
-                            return
-                        end
-                    end
-                end)
-            end
-        end
-    end)
-    
-    -- Note: We're using PlayerGui instead of CoreGui to avoid CoreGui errors
-    -- No monitoring needed since PlayerGui doesn't have the same error issues
-end
-
-do
-    -- Use hookmetamethod if available (most reliable method)
-    -- Wrapped in pcall to prevent "Attempt to change a protected metatable" errors
-    if hookmetamethod then
-        pcall(function()
-            local originalNewIndex = hookmetamethod(game, "__newindex", function(self, key, value)
-                -- CRITICAL: Redirect ScreenGui Parent assignments from CoreGui to PlayerGui
-                if key == "Parent" and typeof(self) == "Instance" and self:IsA("ScreenGui") then
-                    local coreGui = game:GetService("CoreGui")
-                    if value == coreGui or tostring(value) == "CoreGui" or (value and value.Name == "CoreGui") then
-                        local Players = game:GetService("Players")
-                        local plr = Players.LocalPlayer
-                        if plr then
-                            local playerGui = plr:FindFirstChild("PlayerGui")
-                            if playerGui then
-                                return originalNewIndex(self, key, playerGui)
-                            end
-                        end
-                    end
-                end
-                
-                -- Catch ALL attempts to set Visible on non-Instance types
-                if key == "Visible" then
-                    local objType = typeof(self)
-                    if objType ~= "Instance" and objType ~= "userdata" then
-                        return -- Prevent error by not calling original
-                    end
-                    if objType == "Instance" then
-                        local isValid = pcall(function()
-                            local _ = self.ClassName
-                        end)
-                        if not isValid then
-                            return
-                        end
-                        pcall(function()
-                            originalNewIndex(self, key, value)
-                        end)
-                        return
-                    end
-                end
-                
-                return originalNewIndex(self, key, value)
-            end)
-        end)
-        
-        pcall(function()
-            local originalIndex = hookmetamethod(game, "__index", function(self, key)
-                if key == "Visible" then
-                    local objType = typeof(self)
-                    if objType == "number" or (objType ~= "Instance" and objType ~= "userdata") then
-                        return false
-                    end
-                end
-                return originalIndex(self, key)
-            end)
-        end)
-        
-        -- Also hook __namecall to catch method-based property access and nil value calls
-        -- Wrapped in pcall to prevent "Attempt to change a protected metatable" errors
-        if getnamecallmethod then
-            pcall(function()
-                local originalNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-                    local method = getnamecallmethod()
-                    local args = {...}
-                    local unpackFunc = unpack or table.unpack
-                    
-                    -- Catch any methods that might set Visible
-                    if method == "SetAttribute" or method == "SetProperty" then
-                        if args[1] == "Visible" then
-                            local objType = typeof(self)
-                            if objType ~= "Instance" and objType ~= "userdata" then
-                                return -- Suppress
-                            end
-                        end
-                    end
-                    
-                    -- Wrap Connect/connect calls to protect callbacks
-                    if method == "Connect" or method == "connect" then
-                        local callback = args[1]
-                        if callback and type(callback) == "function" then
-                            args[1] = function(...)
-                                local callbackArgs = {...}
-                                local success, result = xpcall(function()
-                                    return callback(unpackFunc(callbackArgs))
-                                end, function(err)
-                                    local errStr = tostring(err or ""):lower()
-                                    if errStr:find("coregui") or errStr:find("visible") or errStr:find("attempt to call a nil") then
-                                        return nil
-                                    end
-                                    return err
-                                end)
-                                return result
-                            end
-                        end
-                    end
-                    
-                    -- Prevent "attempt to call a nil value" errors
-                    local objType = typeof(self)
-                    if objType == "Instance" or objType == "userdata" then
-                        local methodExists = pcall(function()
-                            local _ = self[method]
-                        end)
-                        if not methodExists and (method == "Fire" or method == "Invoke" or method == "Connect" or method == "connect") then
-                            return nil
-                        end
-                    end
-                    
-                    -- Call original with error handling
-                    local success, result = pcall(function()
-                        return originalNamecall(self, unpackFunc(args))
-                    end)
-                    
-                    if not success then
-                        local errMsg = tostring(result or ""):lower()
-                        if errMsg:find("attempt to call a nil") or errMsg:find("coregui") or errMsg:find("eventconnection") or errMsg:find("visible") then
-                            return nil
-                        end
-                        error(result, 0)
-                    end
-                    
-                    return result
-                end)
-            end)
-        end
-    end
-    
-    -- Global error handler to catch and suppress Visible errors
-    local function suppressVisibleErrors()
-        -- Override the error output system
-        local originalError = error
-        error = function(msg, level)
-            if type(msg) == "string" and msg:find("Visible") and msg:find("number") then
-                return -- Suppress the error
-            end
-            return originalError(msg, level)
-        end
-        
-        -- Also hook into print/warn at a deeper level
-        local CoreGui = game:GetService("CoreGui")
-        if CoreGui then
-            -- Try to suppress errors in CoreGui scripts
-            task.spawn(function()
-                task.wait(0.1)
-                -- This won't work directly but shows intent
-            end)
-        end
-    end
-    
-    pcall(suppressVisibleErrors)
-end
-
--- Global error handler to catch UI-related errors
-local function safeSetVisible(element, value)
-    if not element then return end
-    if typeof(element) ~= "Instance" then return end
-    if not element.Parent then return end
-    pcall(function()
-        element.Visible = value == true
-    end)
-end
-
--- Helper function to safely set Visible property
-local function setVisibleSafe(element, value)
-    if not element then return end
-    if typeof(element) ~= "Instance" then return end
-    pcall(function()
-        if element.Parent then
-            element.Visible = value == true
-        end
-    end)
-end
-
--- Comprehensive safe property setter for ANY property
-local function setPropertySafe(obj, prop, value)
-    if not obj then return false end
-    if typeof(obj) ~= "Instance" and typeof(obj) ~= "userdata" then return false end
-    local success = pcall(function()
-        if obj.Parent or obj:IsA("ScreenGui") or obj:IsA("PlayerGui") then
-            obj[prop] = value
-        end
-    end)
-    return success
-end
-
--- Safe function caller to prevent "attempt to call a nil value" errors
-local function safeCall(func, ...)
-    if not func or type(func) ~= "function" then return nil end
-    local args = {...}
-    local unpackFunc = unpack or table.unpack
-    local success, result = pcall(function()
-        return func(unpackFunc(args))
-    end)
-    if success then
-        return result
-    else
-        -- Suppress CoreGui errors
-        local errMsg = tostring(result or "")
-        if errMsg:find("coregui") or errMsg:find("attempt to call a nil") then
-            return nil
-        end
-        return nil
-    end
-end
-
--- Note: Instance.new wrapping removed - too complex and may cause issues
--- The hooks at the game level should catch all property assignments
-
--- Comprehensive GUI element wrapper to prevent errors
-local function wrapGUIElement(element)
-    if not element or typeof(element) ~= "Instance" then
-        return element
-    end
-    
-    -- Create a proxy that validates property assignments
-    -- Wrapped in pcall to prevent "Attempt to change a protected metatable" errors
-    if hookmetamethod then
-        pcall(function()
-            local elementMt = getmetatable(element)
-            if elementMt then
-                local originalNewIndex = hookmetamethod(element, "__newindex", function(self, key, value)
-                    if key == "Visible" then
-                        if typeof(self) ~= "Instance" then
-                            return -- Prevent error
-                        end
-                    end
-                    return originalNewIndex(self, key, value)
-                end)
-            end
-        end)
-    end
-    
-    return element
-end
-
--- Missing function definitions
-local function identifyexecutor()
-    local success, result = pcall(function()
-        return identifyexecutor and identifyexecutor() or "Unknown"
-    end)
-    return success and result or "Unknown"
-end
-
-local function logAction(title, message, isError)
-    -- Placeholder for logging function
-    if isError then
-        warn(title .. ": " .. (message or ""))
-    else
-        print(title .. ": " .. (message or ""))
-    end
-end
-
--- Get player HWID (hardware ID) - placeholder implementation
-local function getPlayerHWID()
-    local success, hwid = pcall(function()
-        -- Try to get HWID from executor if available
-        if getgenv and getgenv().HWID then
-            return getgenv().HWID
-        end
-        -- Fallback to user ID
-        return tostring(game.Players.LocalPlayer.UserId)
-    end)
-    return success and hwid or tostring(game.Players.LocalPlayer.UserId)
-end
-
-local playerHWID = getPlayerHWID()
-
--- Note: CoreGui monitoring removed - we're using PlayerGui instead to avoid CoreGui errors
-
 local UserInputService = game:GetService("UserInputService")
 local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
--- Note: Instance.new hook removed - direct assignment causes "Attempt to change a protected metatable" error
--- The hookmetamethod hooks above already handle ScreenGui redirection safely
-
--- Load Informant UI Library from GitHub (works for both mobile and desktop)
-getgenv().Config = {
-    Invite = "informant.wtf",
-    Version = "0.0",
-}
-
-getgenv().luaguardvars = {
-    DiscordName = "username#0000",
-}
-
-local informantLib
-local success, err = pcall(function()
-    -- Try the example URL first (known to work)
-    informantLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/drillygzzly/Other/main/1"))()
-    if not informantLib then
-        error("Failed to load library from example URL")
-    end
-    informantLib:init() -- Initalizes Library Do Not Delete This
-end)
-
-if not success then
-    warn("Failed to load Informant library from example URL:", err)
-    -- Try alternative URL
-    local success2, err2 = pcall(function()
-        informantLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/weakhoes/Roblox-UI-Libs/main/2%20Informant.wtf%20Lib%20(FIXED)/informant.wtf%20Lib%20Source.lua'))()
-        if not informantLib then
-            error("Failed to load library from alternative URL")
-        end
-        informantLib:init()
-    end)
-    if not success2 then
-        error("Could not load UI library from any source. Error: " .. tostring(err2 or err))
-    end
-end
-
-if not informantLib then
-    error("UI library failed to initialize")
-end
-
 if isMobile then
+    local library = loadstring(readfile("informant.wtf Lib Source.lua"))(); library:init()
     
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -542,7 +75,6 @@ if isMobile then
     local bigheadTransparency = 0.5
     local tackleReachDistance = 5
     local playerHitboxSize = 5
-    local playerHitboxTransparency = 0.7
     local maxPullDistance = 35
     local autoFollowBlatancy = 0.5
     local BOOST_FORCE_Y = 32
@@ -550,7 +82,6 @@ if isMobile then
     local BOOST_COOLDOWN = 1
     local DIVE_BOOST_POWER = 15
     local DIVE_BOOST_COOLDOWN = 2
-    local diveBoostPower = 2.2
 
     local jumpConnection = nil
     local bigheadConnection = nil
@@ -561,51 +92,23 @@ if isMobile then
     local mobileInputMethod = "Buttons" 
     local isParkMatch = Workspace:FindFirstChild("ParkMatchMap") ~= nil
 
-    -- OPTIMIZED: Non-blocking character initialization to prevent freeze
-    local character = plr.Character
-    local humanoidRootPart = nil
-    local humanoid = nil
-    local head = nil
-    local defaultHeadSize = Vector3.new(2, 1, 1)
-    local defaultHeadTransparency = 0
+    local character = plr.Character or plr.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    local humanoid = character:WaitForChild("Humanoid")
+    local head = character:WaitForChild("Head")
+    local defaultHeadSize = head.Size
+    local defaultHeadTransparency = head.Transparency
 
-    local function initializeCharacter(char)
-        task.spawn(function() -- Non-blocking initialization
-            if not char then return end
-            character = char
-            
-            -- Small delay to prevent blocking
-            task.wait(0.01)
-            humanoidRootPart = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart", 5)
-            if not humanoidRootPart then return end
-            
-            task.wait(0.01)
-            humanoid = char:FindFirstChild("Humanoid") or char:WaitForChild("Humanoid", 5)
-            if not humanoid then return end
-            
-            task.wait(0.01)
-            head = char:FindFirstChild("Head") or char:WaitForChild("Head", 5)
-            if head then
-                defaultHeadSize = head.Size
-                defaultHeadTransparency = head.Transparency
-            end
-        end)
+    local function onCharacterAdded(char)
+        character = char
+        humanoidRootPart = char:WaitForChild("HumanoidRootPart")
+        humanoid = char:WaitForChild("Humanoid")
+        head = char:WaitForChild("Head")
+        defaultHeadSize = head.Size
+        defaultHeadTransparency = head.Transparency
     end
 
-    -- Initialize current character if exists
-    if character then
-        initializeCharacter(character)
-    else
-        -- Wait for character asynchronously
-        task.spawn(function()
-            character = plr.CharacterAdded:Wait()
-            initializeCharacter(character)
-        end)
-    end
-
-    ConnectionManager:Add("CharacterAdded", plr.CharacterAdded:Connect(function(char)
-        initializeCharacter(char)
-    end))
+    ConnectionManager:Add("CharacterAdded", plr.CharacterAdded:Connect(onCharacterAdded))
 
     local function getFootball()
         local parkMap = Workspace:FindFirstChild("ParkMap")
@@ -848,7 +351,7 @@ if isMobile then
         if pullVectorEnabled then
             isPullingBall = true
             pullButtonActive = true
-            pcall(function() pullButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255) end)
+            pullButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
             spawn(function()
                 while isPullingBall and pullVectorEnabled do
                     teleportToBall()
@@ -861,14 +364,14 @@ if isMobile then
     pullButton.MouseButton1Up:Connect(function()
         isPullingBall = false
         pullButtonActive = false
-        pcall(function() pullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40) end)
+        pullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     end)
     
     legPullButton.MouseButton1Down:Connect(function()
         if smoothPullEnabled then
             isSmoothPulling = true
             legPullButtonActive = true
-            pcall(function() legPullButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255) end)
+            legPullButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
             spawn(function()
                 while legPullButtonActive and smoothPullEnabled do
                     smoothTeleportToBall()
@@ -881,67 +384,45 @@ if isMobile then
     legPullButton.MouseButton1Up:Connect(function()
         isSmoothPulling = false
         legPullButtonActive = false
-        pcall(function() legPullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40) end)
+        legPullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     end)
     
     UserInputService.TouchEnded:Connect(function(touch, gameProcessed)
         if pullButtonActive then
             isPullingBall = false
             pullButtonActive = false
-            pcall(function() pullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40) end)
+            pullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
         end
         if legPullButtonActive then
             isSmoothPulling = false
             legPullButtonActive = false
-            pcall(function() legPullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40) end)
+            legPullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
         end
     end)
     
-    -- OPTIMIZED: Reduced UI update frequency (every 10 frames instead of every frame)
-    local uiUpdateTick = 0
-    RunService.Heartbeat:Connect(function()
-        uiUpdateTick = uiUpdateTick + 1
-        if uiUpdateTick % 10 == 0 then -- Update every 10 frames
-            -- Add nil checks to prevent errors
-            if pullButton and pullButton.Parent then
-                pcall(function()
-                    if pullVectorEnabled then
-                        pullButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-                        pullButton.Text = "Pull ✓"
-                    elseif not pullButtonActive then
-                        pullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-                        pullButton.Text = "Pull"
-                    end
-                end)
-            end
-            
-            if legPullButton and legPullButton.Parent then
-                pcall(function()
-                    if smoothPullEnabled then
-                        legPullButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-                        legPullButton.Text = "Legit ✓"
-                    elseif not legPullButtonActive then
-                        legPullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-                        legPullButton.Text = "Legit"
-                    end
-                end)
-            end
-            
-            if mobileInputMethod == "Tapping" then
-                if pullButton and pullButton.Parent and typeof(pullButton) == "Instance" then
-                    pcall(function() pullButton.Visible = false end)
-                end
-                if legPullButton and legPullButton.Parent and typeof(legPullButton) == "Instance" then
-                    pcall(function() legPullButton.Visible = false end)
-                end
-            elseif mobileInputMethod == "Buttons" or mobileInputMethod == "Both" then
-                if pullButton and pullButton.Parent and typeof(pullButton) == "Instance" then
-                    pcall(function() pullButton.Visible = pullVectorEnabled == true end)
-                end
-                if legPullButton and legPullButton.Parent and typeof(legPullButton) == "Instance" then
-                    pcall(function() legPullButton.Visible = smoothPullEnabled == true end)
-                end
-            end
+    RunService.RenderStepped:Connect(function()
+        if pullVectorEnabled then
+            pullButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+            pullButton.Text = "Pull âœ“"
+        elseif not pullButtonActive then
+            pullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            pullButton.Text = "Pull"
+        end
+        
+        if smoothPullEnabled then
+            legPullButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+            legPullButton.Text = "Legit âœ“"
+        elseif not legPullButtonActive then
+            legPullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            legPullButton.Text = "Legit"
+        end
+        
+        if mobileInputMethod == "Tapping" then
+            pullButton.Visible = false
+            legPullButton.Visible = false
+        elseif mobileInputMethod == "Buttons" or mobileInputMethod == "Both" then
+            pullButton.Visible = pullVectorEnabled
+            legPullButton.Visible = smoothPullEnabled
         end
     end)
     
@@ -951,7 +432,7 @@ if isMobile then
             if pullVectorEnabled then
                 isPullingBall = true
                 pullButtonActive = true
-                pcall(function() pullButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255) end)
+                pullButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
                 spawn(function()
                     while isPullingBall and pullVectorEnabled do
                         teleportToBall()
@@ -962,7 +443,7 @@ if isMobile then
             if smoothPullEnabled then
                 isSmoothPulling = true
                 legPullButtonActive = true
-                pcall(function() legPullButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255) end)
+                legPullButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
                 spawn(function()
                     while legPullButtonActive and smoothPullEnabled do
                         smoothTeleportToBall()
@@ -978,12 +459,12 @@ if isMobile then
             if pullButtonActive then
                 isPullingBall = false
                 pullButtonActive = false
-                pcall(function() pullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40) end)
+                pullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
             end
             if legPullButtonActive then
                 isSmoothPulling = false
                 legPullButtonActive = false
-                pcall(function() legPullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40) end)
+                legPullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
             end
         end
     end)
@@ -1029,41 +510,21 @@ if isMobile then
         return nil
     end
 
-    local Window
-    local success, err = pcall(function()
-        if not informantLib or not informantLib.NewWindow then
-            error("Library not loaded or NewWindow method missing")
-        end
-        Window = informantLib.NewWindow({
-            title = "Kali Hub | NFL Universe [Mobile]",
-            size = UDim2.new(0, 525, 0, 650)
-        })
-        if not Window then
-            error("Window creation returned nil")
-        end
-    end)
+    local Window = library.NewWindow({
+        title = "Kali Hub | NFL Universe [Mobile]",
+        size = UDim2.new(0, 525, 0, 650),
+        position = UDim2.new(0, 250, 0, 150)
+    })
+    Window:SetOpen(true)
     
-    if not success or not Window then
-        error("Failed to create window: " .. tostring(err or "Unknown error"))
-    end
-    
-    local MainTab
-    local tabSuccess, tabErr = pcall(function()
-        MainTab = Window:AddTab("⚡ Main", 1)
-    end)
-    
-    if not tabSuccess or not MainTab then
-        error("Failed to create MainTab: " .. tostring(tabErr or "Unknown error"))
-    end
+    local MainTab = Window:AddTab("âš¡ Main", 1)
     
     local ButtonSection = MainTab:AddSection("Button Controls", 1, 1)
     
     ButtonSection:AddToggle({
-        enabled = true,
         text = "Draggable Buttons",
+        value = false,
         flag = "DragButtons",
-        tooltip = "",
-        risky = false,
         callback = function(Value)
             dragButtonsEnabled = Value
             
@@ -1083,40 +544,22 @@ if isMobile then
     })
     
     ButtonSection:AddList({
-        enabled = true,
         text = "Mobile Input Method",
-        flag = "InputMethod",
-        multi = false,
-        tooltip = "",
-        risky = false,
-        dragging = false,
-        focused = false,
-        value = "Buttons",
         values = {"Buttons", "Tapping", "Both"},
+        value = "Buttons",
+        flag = "InputMethod",
         callback = function(Option)
             mobileInputMethod = Option
             
             if mobileInputMethod == "Tapping" then
-                if pullButton and pullButton.Parent and typeof(pullButton) == "Instance" then
-                    pcall(function() pullButton.Visible = false end)
-                end
-                if legPullButton and legPullButton.Parent and typeof(legPullButton) == "Instance" then
-                    pcall(function() legPullButton.Visible = false end)
-                end
+                pullButton.Visible = false
+                legPullButton.Visible = false
             elseif mobileInputMethod == "Buttons" then
-                if pullButton and pullButton.Parent and typeof(pullButton) == "Instance" then
-                    pcall(function() pullButton.Visible = pullVectorEnabled == true end)
-                end
-                if legPullButton and legPullButton.Parent and typeof(legPullButton) == "Instance" then
-                    pcall(function() legPullButton.Visible = smoothPullEnabled == true end)
-                end
+                pullButton.Visible = pullVectorEnabled
+                legPullButton.Visible = smoothPullEnabled
             elseif mobileInputMethod == "Both" then
-                if pullButton and pullButton.Parent and typeof(pullButton) == "Instance" then
-                    pcall(function() pullButton.Visible = pullVectorEnabled == true end)
-                end
-                if legPullButton and legPullButton.Parent and typeof(legPullButton) == "Instance" then
-                    pcall(function() legPullButton.Visible = smoothPullEnabled == true end)
-                end
+                pullButton.Visible = pullVectorEnabled
+                legPullButton.Visible = smoothPullEnabled
             end
         end,
     })
@@ -1156,7 +599,7 @@ local FootballRemote = nil
 -- Create Highlight GUI
 local TargetHighlightGui = Instance.new("ScreenGui")
 TargetHighlightGui.Name = "QBTargetHighlightGui"
-TargetHighlightGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+TargetHighlightGui.Parent = game:GetService("CoreGui")
 TargetHighlightGui.ResetOnSpawn = false
 
 local TargetHighlight = Instance.new("Highlight")
@@ -1182,7 +625,7 @@ local function updateAkiBeam(origin, vel3, T, gravity)
     if not qbTrajectoryEnabled or not qbAimbotEnabled then return end
     
     local g = Vector3.new(0, -gravity, 0)
-    local segmentCount = 20 -- OPTIMIZED: Reduced from 30 to 20 for better performance
+    local segmentCount = 30
     local lastPos = origin
     
     for i = 0, segmentCount do
@@ -1218,7 +661,7 @@ end
 -- Create Lock Button
 local LockButtonGui = Instance.new("ScreenGui")
 LockButtonGui.Name = "QBLockTargetGui"
-LockButtonGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+LockButtonGui.Parent = game:GetService("CoreGui")
 LockButtonGui.ResetOnSpawn = false
 
 local LockButton = Instance.new("TextButton")
@@ -1233,7 +676,7 @@ LockButton.Font = Enum.Font.GothamBold
 LockButton.TextSize = 12
 LockButton.Parent = LockButtonGui
 LockButton.AutoButtonColor = true
-setVisibleSafe(LockButton, false)
+LockButton.Visible = false
 
 local LockButtonCorner = Instance.new("UICorner")
 LockButtonCorner.CornerRadius = UDim.new(0, 12)
@@ -1270,10 +713,10 @@ game:GetService("UserInputService").InputChanged:Connect(function(input)
 end)
 
 -- Create Info Cards
-local QBInfoCards = Instance.new('ScreenGui', game.Players.LocalPlayer:WaitForChild("PlayerGui"))
+local QBInfoCards = Instance.new('ScreenGui', game:GetService("CoreGui"))
 QBInfoCards.Name = "QBInfoCards"
 QBInfoCards.ResetOnSpawn = false
-setPropertySafe(QBInfoCards, "Enabled", false)
+QBInfoCards.Enabled = false
 
 local Player_Card = Instance.new('Frame', QBInfoCards)
 Player_Card.Name = "Player Card"
@@ -1512,19 +955,11 @@ end
 
 local function UpdateTargetHighlight(player)
     if player and player.Character and qbHighlightEnabled then
-        pcall(function()
-            if TargetHighlight then
-                TargetHighlight.Adornee = player.Character
-                TargetHighlight.Enabled = true
-            end
-        end)
+        TargetHighlight.Adornee = player.Character
+        TargetHighlight.Enabled = true
     else
-        pcall(function()
-            if TargetHighlight then
-                TargetHighlight.Adornee = nil
-                TargetHighlight.Enabled = false
-            end
-        end)
+        TargetHighlight.Adornee = nil
+        TargetHighlight.Enabled = false
     end
 end
 
@@ -1541,52 +976,42 @@ for _, Object in next, game:GetService("ReplicatedStorage"):GetDescendants() do
 end
 
 local __qbNamecall
-if hookmetamethod then
-    __qbNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-        local method = getnamecallmethod()
-        local args = {...}
-        local plr = game.Players.LocalPlayer
-        
-        if method == "FireServer" and args[1] == "Clicked" and qbAimbotEnabled and qbCurrentTargetPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
-            local headPos = plr.Character.Head.Position
-            local isPark = game.PlaceId == 8206123457
-            return __qbNamecall(self, "Clicked", headPos, headPos + qbData.Direction * 10000, isPark and qbData.Power or 1, qbData.Power)
-        end
-        
-        return __qbNamecall(self, ...)
-    end)
-end
+__qbNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+    local plr = game.Players.LocalPlayer
+    
+    if method == "FireServer" and args[1] == "Clicked" and qbAimbotEnabled and qbCurrentTargetPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
+        local headPos = plr.Character.Head.Position
+        local isPark = game.PlaceId == 8206123457
+        return __qbNamecall(self, "Clicked", headPos, headPos + qbData.Direction * 10000, isPark and qbData.Power or 1, qbData.Power)
+    end
+    
+    return __qbNamecall(self, ...)
+end)
 
-MainTab:AddToggle({
-    enabled = true,
+MainTab:AddSection("QB Aimbot", 1, 2):AddToggle({
     text = "QB Aimbot",
+    value = false,
     flag = "QBAimbot",
-    tooltip = "",
-    risky = false,
     callback = function(Value)
         qbAimbotEnabled = Value
         if not Value then
             UpdateTargetHighlight(nil)
             clearAkiBeam()
-            if LockButton and LockButton.Parent and typeof(LockButton) == "Instance" then
-                pcall(function() LockButton.Visible = false end)
-            end
-            if QBInfoCards then setPropertySafe(QBInfoCards, "Enabled", false) end
+            LockButton.Visible = false
+            QBInfoCards.Enabled = false
         else
-            if LockButton and LockButton.Parent and typeof(LockButton) == "Instance" then
-                pcall(function() LockButton.Visible = true end)
-            end
-            if QBInfoCards then setPropertySafe(QBInfoCards, "Enabled", true) end
+            LockButton.Visible = true
+            QBInfoCards.Enabled = true
         end
     end,
 })
 
-MainTab:AddToggle({
-    enabled = true,
+MainTab:AddSection("QB Aimbot", 1, 2):AddToggle({
     text = "Highlight Target",
+    value = false,
     flag = "QBHighlight",
-    tooltip = "",
-    risky = false,
     callback = function(Value)
         qbHighlightEnabled = Value
         if not Value then
@@ -1595,12 +1020,10 @@ MainTab:AddToggle({
     end,
 })
 
-MainTab:AddToggle({
-    enabled = true,
+MainTab:AddSection("QB Aimbot", 1, 2):AddToggle({
     text = "Show Trajectory Line",
+    value = false,
     flag = "QBTrajectory",
-    tooltip = "",
-    risky = false,
     callback = function(Value)
         qbTrajectoryEnabled = Value
         if not Value then
@@ -1609,16 +1032,13 @@ MainTab:AddToggle({
     end,
 })
 
-MainTab:AddSlider({
+MainTab:AddSection("QB Aimbot", 1, 2):AddSlider({
     text = "Max Air Time",
-    flag = "MaxAirTime",
-    suffix = "",
     min = 1,
     max = 10,
     increment = 1,
     value = 3,
-    tooltip = "",
-    risky = false,
+    flag = "MaxAirTime",
     callback = function(Value)
         qbMaxAirTime = Value
     end,
@@ -1626,27 +1046,18 @@ MainTab:AddSlider({
 
 -- Lock Button Click Handler
 LockButton.MouseButton1Click:Connect(function()
-    if not LockButton or not LockButton.Parent then return end
     if qbTargetLocked and qbLockedTargetPlayer then
         qbTargetLocked = false
         qbLockedTargetPlayer = nil
-        pcall(function()
-            if LockButton then
-                LockButton.Text = "LOCK"
-                LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
-            end
-        end)
+        LockButton.Text = "LOCK"
+        LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
     else
         local closestPlayer = getClosestPlayerInFront()
         if closestPlayer then
             qbLockedTargetPlayer = closestPlayer
             qbTargetLocked = true
-            pcall(function()
-                if LockButton then
-                    LockButton.Text = "LOCKED"
-                    LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-                end
-            end)
+            LockButton.Text = "LOCKED"
+            LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
         end
     end
 end)
@@ -1667,40 +1078,27 @@ game:GetService("UserInputService").InputBegan:Connect(function(Input, GameProce
                     ["Power"] = qbData.Power
                 },
             }
-            if FootballRemote then
-                pcall(function()
-                    FootballRemote:FireServer(unpack(ThrowArguments))
-                end)
-            end
+            FootballRemote:FireServer(unpack(ThrowArguments))
         end
     end
 
     if plr.PlayerGui:FindFirstChild("BallGui") then
-            if Input.KeyCode == Enum.KeyCode.G then
-                if not LockButton or not LockButton.Parent then return end
-                if qbTargetLocked and qbLockedTargetPlayer then
-                    qbTargetLocked = false
-                    qbLockedTargetPlayer = nil
-                    pcall(function()
-                        if LockButton then
-                            LockButton.Text = "LOCK"
-                            LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
-                        end
-                    end)
-                else
-                    local closestPlayer = getClosestPlayerInFront()
-                    if closestPlayer then
-                        qbLockedTargetPlayer = closestPlayer
-                        qbTargetLocked = true
-                        pcall(function()
-                            if LockButton then
-                                LockButton.Text = "LOCKED"
-                                LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-                            end
-                        end)
-                    end
+        if Input.KeyCode == Enum.KeyCode.G then
+            if qbTargetLocked and qbLockedTargetPlayer then
+                qbTargetLocked = false
+                qbLockedTargetPlayer = nil
+                LockButton.Text = "LOCK"
+                LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
+            else
+                local closestPlayer = getClosestPlayerInFront()
+                if closestPlayer then
+                    qbLockedTargetPlayer = closestPlayer
+                    qbTargetLocked = true
+                    LockButton.Text = "LOCKED"
+                    LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
                 end
             end
+        end
     end
 end)
 
@@ -1717,14 +1115,8 @@ task.spawn(function()
             TargetPlayer = getClosestPlayerInFront()
             if qbTargetLocked and not qbLockedTargetPlayer then
                 qbTargetLocked = false
-                if LockButton and LockButton.Parent then
-                    pcall(function()
-                        if LockButton then
-                            LockButton.Text = "LOCK"
-                            LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
-                        end
-                    end)
-                end
+                LockButton.Text = "LOCK"
+                LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
             end
         end
         qbCurrentTargetPlayer = TargetPlayer
@@ -1732,12 +1124,8 @@ task.spawn(function()
         if TargetPlayer and TargetPlayer.Character and TargetPlayer.Character:FindFirstChild("Head") then
             local target = TargetPlayer.Character
 
-            pcall(function()
-                if TargetHighlight then
-                    TargetHighlight.OutlineColor = Color3.fromRGB(153, 51, 255)
-                    TargetHighlight.FillColor = Color3.fromRGB(0, 0, 0)
-                end
-            end)
+            TargetHighlight.OutlineColor = Color3.fromRGB(153, 51, 255)
+            TargetHighlight.FillColor = Color3.fromRGB(0, 0, 0)
 
             local targetPos, power, flightTime, peakHeight, direction, vel3 = CalculateQBThrow(TargetPlayer)
 
@@ -1746,9 +1134,9 @@ task.spawn(function()
                 qbData.Power = power
                 qbData.Direction = direction
 
-                if ValuePower then pcall(function() ValuePower.Text = tostring(power) end) end
-                if ValuePlayer then pcall(function() ValuePlayer.Text = TargetPlayer.Name end) end
-                if ValueLocked then pcall(function() ValueLocked.Text = qbTargetLocked and "True" or "False" end) end
+                ValuePower.Text = tostring(power)
+                ValuePlayer.Text = TargetPlayer.Name
+                ValueLocked.Text = qbTargetLocked and "True" or "False"
 
                 UpdateTargetHighlight(TargetPlayer)
 
@@ -1765,33 +1153,21 @@ task.spawn(function()
                 end
 
                 if qbAimbotEnabled then
-                    if QBInfoCards and QBInfoCards.Parent then setPropertySafe(QBInfoCards, "Enabled", true) end
-                    if Player_Card and Player_Card.Parent and typeof(Player_Card) == "Instance" then 
-                        pcall(function() Player_Card.Visible = true end)
-                    end
-                    if PowerCard and PowerCard.Parent and typeof(PowerCard) == "Instance" then 
-                        pcall(function() PowerCard.Visible = true end)
-                    end
-                    if LockedCard and LockedCard.Parent and typeof(LockedCard) == "Instance" then 
-                        pcall(function() LockedCard.Visible = true end)
-                    end
+                    QBInfoCards.Enabled = true
+                    Player_Card.Visible = true
+                    PowerCard.Visible = true
+                    LockedCard.Visible = true
                 else
-                    if QBInfoCards and QBInfoCards.Parent then setPropertySafe(QBInfoCards, "Enabled", false) end
-                    if Player_Card and Player_Card.Parent and typeof(Player_Card) == "Instance" then 
-                        pcall(function() Player_Card.Visible = false end)
-                    end
-                    if PowerCard and PowerCard.Parent and typeof(PowerCard) == "Instance" then 
-                        pcall(function() PowerCard.Visible = false end)
-                    end
-                    if LockedCard and LockedCard.Parent and typeof(LockedCard) == "Instance" then 
-                        pcall(function() LockedCard.Visible = false end)
-                    end
+                    QBInfoCards.Enabled = false
+                    Player_Card.Visible = false
+                    PowerCard.Visible = false
+                    LockedCard.Visible = false
                 end
             else
                 clearAkiBeam()
             end
         else
-            if ValueLocked then pcall(function() ValueLocked.Text = "False" end) end
+            ValueLocked.Text = "False"
             UpdateTargetHighlight(nil)
             clearAkiBeam()
         end
@@ -1806,22 +1182,8 @@ if string.split(identifyexecutor() or "None", " ")[1] ~= "Xeno" then
             local hitboxPart = nil
 
             local plr = game.Players.LocalPlayer
-            -- OPTIMIZED: Non-blocking character initialization
-            local char = plr.Character
-            local hrp = nil
-            if char then
-                hrp = char:FindFirstChild('HumanoidRootPart')
-                if not hrp then
-                    task.spawn(function()
-                        hrp = char:WaitForChild('HumanoidRootPart', 5)
-                    end)
-                end
-            else
-                task.spawn(function()
-                    char = plr.CharacterAdded:Wait()
-                    hrp = char:WaitForChild('HumanoidRootPart', 5)
-                end)
-            end
+            local char = plr.Character or plr.CharacterAdded:Wait()
+            local hrp = char:WaitForChild('HumanoidRootPart')
 
             local og1 = CFrame.new()
             local prvnt = false
@@ -1870,12 +1232,8 @@ local function updateHitbox()
         if not hitboxPart then
             createHitbox()
         end
-        if hitboxPart and hitboxPart.Parent then
-            pcall(function()
-                hitboxPart.CFrame = theonern.CFrame
-                hitboxPart.Size = Vector3.new(magnetDistance * 2, magnetDistance * 2, magnetDistance * 2)
-            end)
-        end
+        hitboxPart.CFrame = theonern.CFrame
+        hitboxPart.Size = Vector3.new(magnetDistance * 2, magnetDistance * 2, magnetDistance * 2)
     elseif hitboxPart then
         removeHitbox()
     end
@@ -1954,44 +1312,25 @@ end
                 end
             end)
 
-            -- OPTIMIZED: Non-blocking initial football search to prevent freeze
-            task.spawn(function()
-                task.wait(0.1) -- Small delay to prevent blocking on round start
-                for _, d in next, workspace:GetDescendants() do
-                    if isFootball(d) then
-                        udfr(d)
-                        if d.Parent and d.Parent:IsA('Model') and game.Players:GetPlayerFromCharacter(d.Parent) then
-                            ifsm1gotfb = true
-                        end
+            for _, d in next, workspace:GetDescendants() do
+                if isFootball(d) then
+                    udfr(d)
+                    if d.Parent and d.Parent:IsA('Model') and game.Players:GetPlayerFromCharacter(d.Parent) then
+                        ifsm1gotfb = true
                     end
                 end
-            end)
+            end
 
             local oind
-            if hookmetamethod then
-                oind = hookmetamethod(game, '__index', function(self, key)
-                    if magnetEnabled and (not checkcaller or not checkcaller()) and key == 'CFrame' and self == hrp and prvnt then
-                        return og1
-                    end
-                    if oind then
-                        return oind(self, key)
-                    end
-                end)
-            end
+            oind = hookmetamethod(game, '__index', function(self, key)
+                if magnetEnabled and not checkcaller() and key == 'CFrame' and self == hrp and prvnt then
+                    return og1
+                end
+                return oind(self, key)
+            end)
 
             game:GetService('RunService').Heartbeat:Connect(function()
                 updateHitbox()
-                
-                -- Safety check: ensure hrp exists before using it
-                if not hrp or not hrp.Parent then
-                    if not char then
-                        char = plr.Character
-                        if char then
-                            hrp = char:FindFirstChild('HumanoidRootPart')
-                        end
-                    end
-                    if not hrp then return end
-                end
                 
                 if not magnetEnabled or not theonern or not theonern.Parent then 
                     ifsm1gotfb = false
@@ -2032,25 +1371,19 @@ end
             end)
 
             plr.CharacterAdded:Connect(function(c2)
-                -- OPTIMIZED: Non-blocking character initialization
-                task.spawn(function()
-                    char = c2
-                    task.wait(0.01) -- Small delay to prevent blocking
-                    hrp = c2:FindFirstChild('HumanoidRootPart') or c2:WaitForChild('HumanoidRootPart', 5)
-                    prvnt = false
-                    posCache = {}
-                    removeHitbox()
-                end)
+                char = c2
+                hrp = c2:WaitForChild('HumanoidRootPart')
+                prvnt = false
+                posCache = {}
+                removeHitbox()
             end)
 
             local MagnetSection = MainTab:AddSection("Magnets", 1, 1)
 
-            MagnetSection:AddToggle({
-                enabled = true,
+            local MagnetToggle = MainTab:AddToggle({
                 text = "Desync Mags",
+                value = false,
                 flag = "FootballMagnet",
-                tooltip = "",
-                risky = false,
                 callback = function(Value)
                     magnetEnabled = Value
                     if not Value then
@@ -2062,25 +1395,20 @@ end
             
             MagnetSection:AddSlider({
                 text = "Magnet Distance",
-                flag = "FootballDistance",
-                suffix = "",
                 min = 0,
                 max = 120,
                 increment = 1,
                 value = 120,
-                tooltip = "",
-                risky = false,
+                flag = "FootballDistance",
                 callback = function(Value)
                     magnetDistance = Value
                 end,
             })
             
             MagnetSection:AddToggle({
-                enabled = true,
                 text = "Show Hitbox",
+                value = false,
                 flag = "ShowHitbox",
-                tooltip = "",
-                risky = false,
                 callback = function(Value)
                     showHitbox = Value
                     if not Value then
@@ -2093,32 +1421,25 @@ end
     local LegitSection = MainTab:AddSection("Legit Pull Vector", 1, 2)
     
     LegitSection:AddToggle({
-        enabled = true,
         text = "Legit Pull Vector",
+        value = false,
         flag = "LegitPull",
-        tooltip = "",
-        risky = false,
         callback = function(Value)
             smoothPullEnabled = Value
             
             if mobileInputMethod == "Buttons" or mobileInputMethod == "Both" then
-                if legPullButton and legPullButton.Parent and typeof(legPullButton) == "Instance" then
-                    pcall(function() legPullButton.Visible = Value == true end)
-                end
+                legPullButton.Visible = Value
             end
         end,
     })
     
     LegitSection:AddSlider({
         text = "Vector Smoothing",
-        flag = "Smoothness",
-        suffix = "",
         min = 0.01,
-        max = 1,
+                max = 1,
         increment = 0.01,
         value = 0.20,
-        tooltip = "",
-        risky = false,
+        flag = "Smoothness",
         callback = function(Value)
             magnetSmoothness = Value
         end,
@@ -2127,32 +1448,25 @@ end
     local PullSection = MainTab:AddSection("Pull Vector", 2, 1)
     
     PullSection:AddToggle({
-        enabled = true,
         text = "Pull Vector",
+        value = false,
         flag = "PullVector",
-        tooltip = "",
-        risky = false,
         callback = function(Value)
             pullVectorEnabled = Value
             
             if mobileInputMethod == "Buttons" or mobileInputMethod == "Both" then
-                if pullButton and pullButton.Parent and typeof(pullButton) == "Instance" then
-                    pcall(function() pullButton.Visible = Value == true end)
-                end
+                pullButton.Visible = Value
             end
         end,
     })
     
     PullSection:AddSlider({
         text = "Offset Distance",
-        flag = "Offset",
-        suffix = "",
         min = 0,
-        max = 30,
+                max = 30,
         increment = 1,
         value = 15,
-        tooltip = "",
-        risky = false,
+        flag = "Offset",
         callback = function(Value)
             offsetDistance = Value
         end,
@@ -2160,14 +1474,11 @@ end
     
     PullSection:AddSlider({
         text = "Max Pull Distance",
-        flag = "MaxDist",
-        suffix = "",
         min = 1,
-        max = 100,
+                max = 100,
         increment = 1,
         value = 35,
-        tooltip = "",
-        risky = false,
+        flag = "MaxDist",
         callback = function(Value)
             maxPullDistance = Value
         end,
@@ -2201,11 +1512,11 @@ end
         return nil
     end
 
-    local PlayerTab = Window:AddTab("👤 Player", 2)
+    local PlayerTab = Window:AddTab("ðŸ‘¤ Player", 1)
     
-    local StaminaSection = PlayerTab:CreateSection("Stamina")
+    local StaminaSection = PlayerTab:AddSection("Stamina", 1, 1)
 
-local StaminaDepletion = PlayerTab:CreateToggle({
+StaminaSection:AddToggle({
 Name = "Infinite Stamina",
 CurrentValue = false,
 Flag = "StaminaDepletion",
@@ -2225,13 +1536,13 @@ Callback = function(enabled)
 end,
 })
 
-    local SpeedSection = PlayerTab:CreateSection("WalkSpeed")
+    local SpeedSection = PlayerTab:AddSection("WalkSpeed", 1, 2)
     
-    local WalkSpeedToggle = PlayerTab:CreateToggle({
-        Name = "WalkSpeed",
-        CurrentValue = false,
-        Flag = "WalkSpeed",
-        Callback = function(value)
+    SpeedSection:AddToggle({
+        text = "WalkSpeed",
+        value = false,
+        flag = "WalkSpeed",
+        callback = function(value)
             walkSpeedEnabled = value
             
             if walkSpeedConnection then
@@ -2258,13 +1569,14 @@ end,
         end,
     })
     
-    local WalkSpeedSlider = PlayerTab:CreateSlider({
-        Name = "Custom WalkSpeed",
-        Range = {16, 35},
-        Increment = 1,
-        CurrentValue = 25,
-        Flag = "WSValue",
-        Callback = function(Value)
+    SpeedSection:AddSlider({
+        text = "Custom WalkSpeed",
+        min = 16,
+        max = 35,
+        increment = 1,
+        value = 25,
+        flag = "WSValue",
+        callback = function(Value)
             customWalkSpeed = Value
             if walkSpeedEnabled then
                 local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
@@ -2275,13 +1587,13 @@ end,
         end,
     })
     
-    local JumpSection = PlayerTab:CreateSection("JumpPower")
+    local JumpSection = PlayerTab:AddSection("JumpPower", 1, 3)
     
-    local JumpToggle = PlayerTab:CreateToggle({
-        Name = "JumpPower",
-        CurrentValue = false,
-        Flag = "JumpPower",
-        Callback = function(value)
+    local JumpToggle = PlayerTab:AddToggle({
+        text = "JumpPower",
+        value = false,
+        flag = "JumpPower",
+        callback = function(value)
             jumpPowerEnabled = value
             if value then
                 if jumpConnection then jumpConnection:Disconnect() end
@@ -2298,24 +1610,25 @@ end,
         end,
     })
     
-    local JumpSlider = PlayerTab:CreateSlider({
-        Name = "Custom JumpPower",
-        Range = {10, 200},
-        Increment = 5,
-        CurrentValue = 50,
-        Flag = "JPValue",
-        Callback = function(Value)
+    local JumpSlider = PlayerTab:AddSlider({
+        text = "Custom JumpPower",
+        min = 10,
+                max = 200,
+        increment = 5,
+        value = 50,
+        flag = "JPValue",
+        callback = function(Value)
             customJumpPower = Value
         end,
     })
     
-    local BoostSection = PlayerTab:CreateSection("Jump Boost")
+    local BoostSection = PlayerTab:AddSection("Jump Boost", 1, 4)
     
-    local JumpBoostToggle = PlayerTab:CreateToggle({
-        Name = "Jump Boost",
-        CurrentValue = false,
-        Flag = "JumpBoost",
-        Callback = function(value)
+    local JumpBoostToggle = PlayerTab:AddToggle({
+        text = "Jump Boost",
+        value = false,
+        flag = "JumpBoost",
+        callback = function(value)
             jumpBoostEnabled = value
             if value then
                 if plr.Character then
@@ -2327,33 +1640,34 @@ end,
         end
     })
     
-    local JumpBoostModeToggle = PlayerTab:CreateToggle({
-        Name = "Always Boost Mode",
-        CurrentValue = false,
-        Flag = "BoostMode",
-        Callback = function(Value)
+    local JumpBoostModeToggle = PlayerTab:AddToggle({
+        text = "Always Boost Mode",
+        value = false,
+        flag = "BoostMode",
+        callback = function(Value)
             jumpBoostTradeMode = Value
         end
     })
     
-    local BoostForceSlider = PlayerTab:CreateSlider({
-        Name = "Boost Force",
-        Range = {10, 100},
-        Increment = 2,
-        CurrentValue = 32,
-        Flag = "BoostForce",
-        Callback = function(Value)
+    local BoostForceSlider = PlayerTab:AddSlider({
+        text = "Boost Force",
+        min = 10,
+                max = 100,
+        increment = 2,
+        value = 32,
+        flag = "BoostForce",
+        callback = function(Value)
             BOOST_FORCE_Y = Value
         end,
     })
     
-    local DiveSection = PlayerTab:CreateSection("Dive Boost")
+    local DiveSection = PlayerTab:AddSection("Dive Boost", 1, 5)
     
-    local DiveBoostToggle = PlayerTab:CreateToggle({
-        Name = "Dive Boost",
-        CurrentValue = false,
-        Flag = "DiveBoost",
-        Callback = function(value)
+    local DiveBoostToggle = PlayerTab:AddToggle({
+        text = "Dive Boost",
+        value = false,
+        flag = "DiveBoost",
+        callback = function(value)
             diveBoostEnabled = value
             
             if value then
@@ -2395,24 +1709,25 @@ end,
         end,
     })
     
-    local DivePowerSlider = PlayerTab:CreateSlider({
-        Name = "Dive Boost Power",
-        Range = {2.2, 10},
-        Increment = 0.1,
-        CurrentValue = 2,
-        Flag = "DivePower",
-        Callback = function(Value)
+    local DivePowerSlider = PlayerTab:AddSlider({
+        text = "Dive Boost Power",
+        min = 2.2,
+                max = 10,
+        increment = 0.1,
+        value = 2,
+        flag = "DivePower",
+        callback = function(Value)
             diveBoostPower = Value
         end,
     })
     
-    local AutoSection = PlayerTab:CreateSection("Auto Rush")
+    local AutoSection = PlayerTab:AddSection("Auto Rush", 2, 1)
     
-    local AutoFollowToggle = PlayerTab:CreateToggle({
-        Name = "Auto Follow Ball Carrier",
-        CurrentValue = false,
-        Flag = "AutoFollow",
-        Callback = function(enabled)
+    local AutoFollowToggle = PlayerTab:AddToggle({
+        text = "Auto Follow Ball Carrier",
+        value = false,
+        flag = "AutoFollow",
+        callback = function(enabled)
             autoFollowBallCarrierEnabled = enabled
 
             if autoFollowConnection then
@@ -2439,47 +1754,43 @@ end,
         end,
     })
     
-    local BlatancySlider = PlayerTab:CreateSlider({
-        Name = "Follow Blatancy",
-        Range = {0, 1},
-        Increment = 0.05,
-        CurrentValue = 0.5,
-        Flag = "Blatancy",
-        Callback = function(Value)
+    local BlatancySlider = PlayerTab:AddSlider({
+        text = "Follow Blatancy",
+        min = 0,
+                max = 1,
+        increment = 0.05,
+        value = 0.5,
+        flag = "Blatancy",
+        callback = function(Value)
             autoFollowBlatancy = Value
         end,
     })
     
-    local HitboxTab = Window:AddTab("📦 Hitbox", 3)
+    local HitboxTab = Window:AddTab("ðŸ“¦ Hitbox", 1)
     
-    local BigheadSection = HitboxTab:CreateSection("BigHead")
+    local BigheadSection = HitboxTab:AddSection("BigHead", 1, 1)
     
-    local BigheadToggle = HitboxTab:CreateToggle({
-        Name = "Bighead Collision",
-        CurrentValue = false,
-        Flag = "Bighead",
-        Callback = function(value)
+    local BigheadToggle = HitboxTab:AddToggle({
+        text = "Bighead Collision",
+        value = false,
+        flag = "Bighead",
+        callback = function(value)
             bigheadEnabled = value
     
             if value then
                 if bigheadConnection then bigheadConnection:Disconnect() end
-                -- OPTIMIZED: Reduced update frequency (every 3 frames instead of every frame)
-                local bigheadTick = 0
-                bigheadConnection = RunService.Heartbeat:Connect(function()
-                    bigheadTick = bigheadTick + 1
-                    if bigheadTick % 3 == 0 then -- Update every 3 frames
-                        for _, player in pairs(Players:GetPlayers()) do
-                            if player ~= plr then
-                                local character = player.Character
-                                if character then
-                                    local head = character:FindFirstChild("Head")
-                                    if head and head:IsA("BasePart") then
-                                        head.Size = Vector3.new(bigheadSize, bigheadSize, bigheadSize)
-                                        head.Transparency = bigheadTransparency
-                                        head.CanCollide = true
-                                        local face = head:FindFirstChild("face")
-                                        if face then face:Destroy() end
-                                    end
+                bigheadConnection = RunService.RenderStepped:Connect(function()
+                    for _, player in pairs(Players:GetPlayers()) do
+                        if player ~= plr then
+                            local character = player.Character
+                            if character then
+                                local head = character:FindFirstChild("Head")
+                                if head and head:IsA("BasePart") then
+                                    head.Size = Vector3.new(bigheadSize, bigheadSize, bigheadSize)
+                                    head.Transparency = bigheadTransparency
+                                    head.CanCollide = true
+                                    local face = head:FindFirstChild("face")
+                                    if face then face:Destroy() end
                                 end
                             end
                         end
@@ -2504,24 +1815,25 @@ end,
         end,
     })
     
-    local HeadSizeSlider = HitboxTab:CreateSlider({
-        Name = "Head Size",
-        Range = {1, 10},
-        Increment = 1,
-        CurrentValue = 1,
-        Flag = "HeadSize",
-        Callback = function(Value)
+    local HeadSizeSlider = HitboxTab:AddSlider({
+        text = "Head Size",
+        min = 1,
+                max = 10,
+        increment = 1,
+        value = 1,
+        flag = "HeadSize",
+        callback = function(Value)
             bigheadSize = Value
         end,
     })
     
-    local TackleSection = HitboxTab:CreateSection("Tackle Reach")
+    local TackleSection = HitboxTab:AddSection("Tackle Reach", 1, 2)
     
-    local TackleToggle = HitboxTab:CreateToggle({
-        Name = "Tackle Reach",
-        CurrentValue = false,
-        Flag = "TackleReach",
-        Callback = function(enabled)
+    local TackleToggle = HitboxTab:AddToggle({
+        text = "Tackle Reach",
+        value = false,
+        flag = "TackleReach",
+        callback = function(enabled)
             tackleReachEnabled = enabled
     
             if tackleReachConnection then
@@ -2577,24 +1889,25 @@ end,
         end,
     })
     
-    local TackleSlider = HitboxTab:CreateSlider({
-        Name = "Reach Distance",
-        Range = {1, 10},
-        Increment = 1,
-        CurrentValue = 5,
-        Flag = "TackleDistance",
-        Callback = function(Value)
+    local TackleSlider = HitboxTab:AddSlider({
+        text = "Reach Distance",
+        min = 1,
+                max = 10,
+        increment = 1,
+        value = 5,
+        flag = "TackleDistance",
+        callback = function(Value)
             tackleReachDistance = Value
         end,
     })
     
-    local PlayerHitboxSection = HitboxTab:CreateSection("Player Hitbox")
+    local PlayerHitboxSection = HitboxTab:AddSection("Player Hitbox", 2, 1)
     
-    local PlayerHitboxToggle = HitboxTab:CreateToggle({
-        Name = "Player Hitbox Expander",
-        CurrentValue = false,
-        Flag = "PlayerHitbox",
-        Callback = function(enabled)
+    local PlayerHitboxToggle = HitboxTab:AddToggle({
+        text = "Player Hitbox Expander",
+        value = false,
+        flag = "PlayerHitbox",
+        callback = function(enabled)
             playerHitboxEnabled = enabled
 
             if playerHitboxConnection then
@@ -2603,27 +1916,22 @@ end,
             end
 
             if enabled then
-                -- OPTIMIZED: Reduced update frequency (every 2 frames instead of every frame)
-                local hitboxTick = 0
-                playerHitboxConnection = RunService.Heartbeat:Connect(function()
-                    hitboxTick = hitboxTick + 1
-                    if hitboxTick % 2 == 0 then -- Update every 2 frames
-                        local gamesFolder = workspace:FindFirstChild("Games")
-                        if gamesFolder then
-                            local currentGame = gamesFolder:GetChildren()[1]
-                            if currentGame then
-                                local hitboxesFolder = currentGame.Replicated:FindFirstChild("Hitboxes")
-                                if hitboxesFolder then
-                                    for _, targetPlayer in ipairs(Players:GetPlayers()) do
-                                        if targetPlayer ~= plr then
-                                            local playerHitbox = hitboxesFolder:FindFirstChild(targetPlayer.Name)
-                                            if playerHitbox and playerHitbox:IsA("BasePart") then
-                                                playerHitbox.Size = Vector3.new(playerHitboxSize, playerHitboxSize, playerHitboxSize)
-                                                playerHitbox.Transparency = playerHitboxTransparency
-                                                playerHitbox.CanCollide = false
-                                                playerHitbox.Material = Enum.Material.Neon
-                                                playerHitbox.Color = Color3.fromRGB(255, 0, 0)
-                                            end
+                playerHitboxConnection = RunService.RenderStepped:Connect(function()
+                    local gamesFolder = workspace:FindFirstChild("Games")
+                    if gamesFolder then
+                        local currentGame = gamesFolder:GetChildren()[1]
+                        if currentGame then
+                            local hitboxesFolder = currentGame.Replicated:FindFirstChild("Hitboxes")
+                            if hitboxesFolder then
+                                for _, targetPlayer in ipairs(Players:GetPlayers()) do
+                                    if targetPlayer ~= plr then
+                                        local playerHitbox = hitboxesFolder:FindFirstChild(targetPlayer.Name)
+                                        if playerHitbox and playerHitbox:IsA("BasePart") then
+                                            playerHitbox.Size = Vector3.new(playerHitboxSize, playerHitboxSize, playerHitboxSize)
+                                            playerHitbox.Transparency = playerHitboxTransparency
+                                            playerHitbox.CanCollide = false
+                                            playerHitbox.Material = Enum.Material.Neon
+                                            playerHitbox.Color = Color3.fromRGB(255, 0, 0)
                                         end
                                     end
                                 end
@@ -2657,43 +1965,45 @@ end,
         end,
     })
 
-    local HitboxSizeSlider = HitboxTab:CreateSlider({
-        Name = "Hitbox Size",
-        Range = {2, 50},
-        Increment = 1,
-        CurrentValue = 5,
-        Flag = "HitboxSize",
-        Callback = function(Value)
+    local HitboxSizeSlider = HitboxTab:AddSlider({
+        text = "Hitbox Size",
+        min = 2,
+                max = 50,
+        increment = 1,
+        value = 5,
+        flag = "HitboxSize",
+        callback = function(Value)
             playerHitboxSize = Value
         end,
     })
 
-    local HitboxTransparencySlider = HitboxTab:CreateSlider({
-        Name = "Hitbox Transparency",
-        Range = {0, 1},
-        Increment = 0.1,
-        CurrentValue = 0.7,
-        Flag = "HitboxTransparency",
-        Callback = function(Value)
+    local HitboxTransparencySlider = HitboxTab:AddSlider({
+        text = "Hitbox Transparency",
+        min = 0,
+                max = 1,
+        increment = 0.1,
+        value = 0.7,
+        flag = "HitboxTransparency",
+        callback = function(Value)
             playerHitboxTransparency = Value
         end,
     })
     
-    local Auto = Window:AddTab("🤖 Automation", 4) 
-    local AutoSack = Auto:CreateToggle({
-        Name = "Auto Sack",
-        CurrentValue = false,
-        Flag = "AutoSacker", 
-        Callback = function(Value)
+    local Auto = Window:AddTab("ðŸ¤– Automation", 1) 
+    local AutoSack = Auto:AddToggle({
+        text = "Auto Sack",
+        value = false,
+        flag = "AutoSacker", 
+        callback = function(Value)
             getgenv().AutoSack = Value
         end,
     })
     
-    local AntiBlocker = Auto:CreateToggle({
-        Name = "Anti Block",
-        CurrentValue = false,
-        Flag = "AntiBlocker", 
-        Callback = function(Value)
+    local AntiBlocker = Auto:AddToggle({
+        text = "Anti Block",
+        value = false,
+        flag = "AntiBlocker", 
+        callback = function(Value)
             getgenv().AntiBlock = Value
         end,
     })
@@ -2787,36 +2097,14 @@ end,
                 "Catching",
                 true
             }
-            local gamesFolder = ReplicatedStorage:WaitForChild("Games", 5)
-            if gamesFolder then
-                local gameFolder = gamesFolder:WaitForChild(gameId, 5)
-                if gameFolder then
-                    local reEvent = gameFolder:WaitForChild("ReEvent", 5)
-                    if reEvent then
-                        pcall(function()
-                            reEvent:FireServer(unpack(args))
-                        end)
-                    end
-                end
-            end
+            ReplicatedStorage:WaitForChild("Games"):WaitForChild(gameId):WaitForChild("ReEvent"):FireServer(unpack(args))
         else
             local args = {
                 "Mechanics",
                 "Catching",
                 true
             }
-            local gamesFolder = ReplicatedStorage:WaitForChild("Games", 5)
-            if gamesFolder then
-                local gameFolder = gamesFolder:WaitForChild(gameId, 5)
-                if gameFolder then
-                    local reEvent = gameFolder:WaitForChild("ReEvent", 5)
-                    if reEvent then
-                        pcall(function()
-                            reEvent:FireServer(unpack(args))
-                        end)
-                    end
-                end
-            end
+            ReplicatedStorage:WaitForChild("Games"):WaitForChild(gameId):WaitForChild("ReEvent"):FireServer(unpack(args))
         end
     end
 
@@ -2841,40 +2129,33 @@ end,
         end
     end)
 
-    Auto:CreateToggle({
-        Name = "Auto Catch",
-        CurrentValue = false,
-        Flag = "AutoCatch",
-        Callback = function(Value)
+    Auto:AddToggle({
+        text = "Auto Catch",
+        value = false,
+        flag = "AutoCatch",
+        callback = function(Value)
             autoCatchEnabled = Value
         end,
     })
 
     Auto:AddSlider({
         text = "Catch Radius",
-        flag = "AutoCatchRadius",
         min = 0,
-        max = 35,
+                max = 35,
         increment = 1,
         value = 0,
-        suffix = "",
-        tooltip = "",
-        risky = false,
+        flag = "AutoCatchRadius",
         callback = function(Value)
             autoCatchRadius = Value
         end,
     })
 
-    local MiscTab = Window:AddTab("🔧 Misc", 5)
+    local MiscTab = Window:AddTab("ðŸ”§ Misc", 1)
 
-    local FPSBoostSection = MiscTab:AddSection("FPS", 1, 1)
-
-    FPSBoostSection:AddToggle({
-        enabled = true,
+    local FPSBoostToggle = MiscTab:AddToggle({
         text = "Potato Graphics Mode",
+        value = false,
         flag = "PotatoMode",
-        tooltip = "",
-        risky = false,
         callback = function(Value)
             if Value then
                 -- Store original settings
@@ -2892,7 +2173,7 @@ end,
                 -- Disable all lighting effects
                 for _, effect in pairs(lighting:GetChildren()) do
                     if effect:IsA("PostEffect") then
-                        pcall(function() effect.Enabled = false end)
+                        effect.Enabled = false
                     end
                 end
                 
@@ -2909,14 +2190,12 @@ end,
                 -- Disable unnecessary visual effects
                 for _, obj in pairs(workspace:GetDescendants()) do
                     if obj:IsA("ParticleEmitter") or obj:IsA("Trail") then
-                        pcall(function() obj.Enabled = false end)
+                        obj.Enabled = false
                     elseif obj:IsA("Explosion") then
-                        pcall(function()
-                            obj.BlastPressure = 1
-                            obj.BlastRadius = 1
-                        end)
+                        obj.BlastPressure = 1
+                        obj.BlastRadius = 1
                     elseif obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-                        pcall(function() obj.Enabled = false end)
+                        obj.Enabled = false
                     elseif obj:IsA("MeshPart") then
                         obj.Material = Enum.Material.SmoothPlastic
                         obj.Reflectance = 0
@@ -2931,7 +2210,7 @@ end,
                     lighting:FindFirstChildOfClass("Sky"):Destroy()
                 end
                 
-                informantLib:SendNotification("Potato graphics enabled! 🥔", 5, Color3.new(0, 255, 0))
+                library:SendNotification("Potato graphics enabled!", 3, Color3.fromRGB(0, 255, 0))
             else
                 -- Restore settings
                 settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
@@ -2942,22 +2221,17 @@ end,
                 
                 for _, effect in pairs(lighting:GetChildren()) do
                     if effect:IsA("PostEffect") then
-                        pcall(function() effect.Enabled = true end)
+                        effect.Enabled = true
                     end
                 end
                 
-                informantLib:SendNotification("Graphics restored to normal", 5, Color3.new(0, 255, 0))
+                library:SendNotification("Graphics restored to normal", 3, Color3.fromRGB(0, 255, 0))
             end
         end,
     })
 
-    FPSBoostSection:AddButton({
-        enabled = true,
+    MiscTab:AddSection("FPS", 1, 1):AddButton({
         text = "Remove Textures",
-        flag = "RemoveTextures",
-        tooltip = "",
-        risky = false,
-        confirm = false,
         callback = function()
             for _, obj in pairs(workspace:GetDescendants()) do
                 if obj:IsA("Decal") or obj:IsA("Texture") then
@@ -2967,46 +2241,35 @@ end,
                 end
             end
             
-            informantLib:SendNotification("All textures removed!", 5, Color3.new(0, 255, 0))
+            library:SendNotification("All textures removed!", 3, Color3.fromRGB(0, 255, 0))
         end,
     })
 
-    -- FPS Counter (Optimized to reduce local registers)
-    local FPSData = {
-        counter = nil,
-        fps = 0,
-        lastUpdate = tick()
-    }
-    
     local FPSSection = MiscTab:AddSection("FPS Counter", 1, 2)
-    FPSData.counter = FPSSection:AddText({
-        text = "FPS: Calculating..."
-    })
-    
+    local FPSCounterText = FPSSection:AddText({text = "FPS: Calculating..."})
+
+    -- FPS Counter
     task.spawn(function()
+        local fps = 0
+        local lastUpdate = tick()
+        
         game:GetService("RunService").RenderStepped:Connect(function()
-            FPSData.fps = FPSData.fps + 1
-            local now = tick()
-            if now - FPSData.lastUpdate >= 1 then
-                if FPSData.counter then
-                    FPSData.counter:SetText("Current FPS: " .. FPSData.fps)
-                end
-                FPSData.fps = 0
-                FPSData.lastUpdate = now
+            fps = fps + 1
+            
+            if tick() - lastUpdate >= 1 then
+                FPSCounterText:Set({text = "Current FPS: " .. fps})
+                fps = 0
+                lastUpdate = tick()
             end
         end)
     end)
 
-    -- Add Settings Tab
-    informantLib:CreateSettingsTab(Window)
-    
-    -- Ensure window is open and visible
-    if Window and Window.SetOpen then
-        Window:SetOpen(true)
-    end
-
 else
-    -- Using Informant library (already loaded above)
+    local repo = 'https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/'
+
+    local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
+    local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
+    local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 
     local Players = game:GetService("Players")
     local TweenService = game:GetService("TweenService")
@@ -3069,7 +2332,6 @@ else
     local tackleReachEnabled = false
     local playerHitboxEnabled = false
     local staminaDepletionEnabled = false
-    local infiniteStaminaEnabled = false
     local autoFollowBallCarrierEnabled = false
     local jumpBoostEnabled = false
     local jumpBoostTradeMode = false
@@ -3116,8 +2378,6 @@ else
     local playerHitboxConnection = nil
 
     local speedMethod = "WalkSpeed"
-    local cframeMultiplier = 5
-    local walkSpeedValue = 25
     local diveBoostConnection = nil
     local flyBodyVelocity = nil
     local flyBodyGyro = nil
@@ -3130,57 +2390,27 @@ else
     local cframeSpeedConnection = nil
     local isParkMatch = Workspace:FindFirstChild("ParkMatchMap") ~= nil
 
-    -- OPTIMIZED: Non-blocking character initialization to prevent freeze
-    local character = plr.Character
-    local humanoidRootPart = nil
-    local humanoid = nil
-    local head = nil
-    local defaultWalkSpeed = 16
-    local defaultJumpPower = 50
-    local defaultHeadSize = Vector3.new(2, 1, 1)
-    local defaultHeadTransparency = 0
+    local character = plr.Character or plr.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    local humanoid = character:WaitForChild("Humanoid")
+    local head = character:WaitForChild("Head")
+    local defaultWalkSpeed = humanoid.WalkSpeed
+    local defaultJumpPower = humanoid.JumpPower
+    local defaultHeadSize = head.Size
+    local defaultHeadTransparency = head.Transparency
 
-    local function initializeCharacter(char)
-        task.spawn(function() -- Non-blocking initialization
-            if not char then return end
-            character = char
-            
-            -- Small delays to prevent blocking
-            task.wait(0.01)
-            humanoidRootPart = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart", 5)
-            if not humanoidRootPart then return end
-            
-            task.wait(0.01)
-            humanoid = char:FindFirstChild("Humanoid") or char:WaitForChild("Humanoid", 5)
-            if humanoid then
-                defaultWalkSpeed = humanoid.WalkSpeed
-                defaultJumpPower = humanoid.JumpPower
-            end
-            if not humanoid then return end
-            
-            task.wait(0.01)
-            head = char:FindFirstChild("Head") or char:WaitForChild("Head", 5)
-            if head then
-                defaultHeadSize = head.Size
-                defaultHeadTransparency = head.Transparency
-            end
-        end)
+    local function onCharacterAdded(char)
+        character = char
+        humanoidRootPart = char:WaitForChild("HumanoidRootPart")
+        humanoid = char:WaitForChild("Humanoid")
+        head = char:WaitForChild("Head")
+        defaultWalkSpeed = humanoid.WalkSpeed
+        defaultJumpPower = humanoid.JumpPower
+        defaultHeadSize = head.Size
+        defaultHeadTransparency = head.Transparency
     end
 
-    -- Initialize current character if exists
-    if character then
-        initializeCharacter(character)
-    else
-        -- Wait for character asynchronously
-        task.spawn(function()
-            character = plr.CharacterAdded:Wait()
-            initializeCharacter(character)
-        end)
-    end
-
-    ConnectionManager:Add("CharacterAdded", plr.CharacterAdded:Connect(function(char)
-        initializeCharacter(char)
-    end))
+    ConnectionManager:Add("CharacterAdded", plr.CharacterAdded:Connect(onCharacterAdded))
 
     local player = game.Players.LocalPlayer
     local playerUsername = player.Name
@@ -3239,22 +2469,22 @@ else
 
     local isBlacklisted, reason = checkBlacklist()
     if isBlacklisted then
-        logAction("🚫 BLACKLISTED USER DETECTED", 
+        logAction("ðŸš« BLACKLISTED USER DETECTED", 
             "HWID: " .. playerHWID .. "\nReason: " .. (reason or "Violation of Terms"), 
             true)
         
-        player:Kick("⛔ Access Denied\n\nYou have been blacklisted from Arsonuf.\nReason: MY FAULT OG " .. (reason or "Violation of Terms"))
+        player:Kick("â›” Access Denied\n\nYou have been blacklisted from Kali Hub.\nReason: MY FAULT OG " .. (reason or "Violation of Terms"))
         return
     end
 
     task.spawn(function()
         while task.wait(5) do
             if checkBlacklist() then
-                logAction("🚫 BLACKLISTED (LIVE KICK)", 
+                logAction("ðŸš« BLACKLISTED (LIVE KICK)", 
                     "HWID: " .. playerHWID .. "\nKicked during active session", 
                     true)
                 
-                player:Kick("⛔ Access Denied\n\nYou have been blacklisted from Arsonuf.")
+                player:Kick("â›” Access Denied\n\nYou have been blacklisted from Kali Hub.")
                 return
             end
         end
@@ -3391,8 +2621,7 @@ else
     end
 
     local function getReEvent()
-        local gamesFolder = ReplicatedStorage:WaitForChild("Games", 5)
-        if not gamesFolder then return nil end
+        local gamesFolder = ReplicatedStorage:WaitForChild("Games")
         local gameChild = nil
         for _, child in ipairs(gamesFolder:GetChildren()) do
             if child:FindFirstChild("ReEvent") then
@@ -3401,18 +2630,10 @@ else
             end
         end
         if not gameChild then
-            local success, result = pcall(function()
-                gameChild = gamesFolder.ChildAdded:Wait()
-                if gameChild then
-                    gameChild:WaitForChild("ReEvent", 5)
-                end
-            end)
-            if not success or not gameChild then return nil end
+            gameChild = gamesFolder.ChildAdded:Wait()
+            gameChild:WaitForChild("ReEvent")
         end
-        if gameChild then
-            return gameChild:WaitForChild("ReEvent", 5)
-        end
-        return nil
+        return gameChild:WaitForChild("ReEvent")
     end
 
     local function applyJumpBoost(rootPart)
@@ -3537,15 +2758,14 @@ else
 
     local function onKick()
         local ReEvent = getReEvent()
-        if not ReEvent then return end
         local angleArgs = { [1] = "Mechanics", [2] = "KickAngleChanged", [3] = 1, [4] = 60, [5] = 1 }
-        pcall(function() ReEvent:FireServer(unpack(angleArgs)) end)
+        ReEvent:FireServer(unpack(angleArgs))
         local powerArgs = { [1] = "Mechanics", [2] = "KickPowerSet", [3] = 1 }
-        pcall(function() ReEvent:FireServer(unpack(powerArgs)) end)
+        ReEvent:FireServer(unpack(powerArgs))
         local hikeArgs = { [1] = "Mechanics", [2] = "KickHiked", [3] = 60, [4] = 1, [5] = 1 }
-        pcall(function() ReEvent:FireServer(unpack(hikeArgs)) end)
+        ReEvent:FireServer(unpack(hikeArgs))
         local accuracyArgs = { [1] = "Mechanics", [2] = "KickAccuracySet", [3] = 60 }
-        pcall(function() ReEvent:FireServer(unpack(accuracyArgs)) end)
+        ReEvent:FireServer(unpack(accuracyArgs))
     end
 
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -3625,41 +2845,21 @@ else
         end
     end)
 
-    -- Note: safeVisibleHook removed - direct metatable modification causes "Attempt to change a protected metatable" error
-    -- The hooks at the game level using hookmetamethod already handle this safely
+    local Window = Library:CreateWindow({
+        Title = 'Kali Hub | NFL Universe',
+        Center = true,
+        AutoShow = true,
+        TabPadding = 8,
+        MenuFadeTime = 0.2
+    })
 
-    local Window
-    local success, err = pcall(function()
-        if not informantLib or not informantLib.NewWindow then
-            error("Library not loaded or NewWindow method missing")
-        end
-        Window = informantLib.NewWindow({
-            title = 'Arson NFL universe',
-            size = UDim2.new(0, 525, 0, 650),
-        })
-        if not Window then
-            error("Window creation returned nil")
-        end
-    end)
-    
-    if not success or not Window then
-        error("Failed to create window: " .. tostring(err or "Unknown error"))
-    end
-
-    local Tabs = {}
-    local tabsSuccess, tabsErr = pcall(function()
-        Tabs = {
-            Main = Window:AddTab('Main', 1),
-            Player = Window:AddTab('Player', 2),
-            Hitbox = Window:AddTab('Hitbox', 3),
-            Automatic = Window:AddTab('Misc', 4),
-            ['UI Settings'] = Window:AddTab('UI Settings', 5),
-        }
-    end)
-    
-    if not tabsSuccess then
-        error("Failed to create tabs: " .. tostring(tabsErr or "Unknown error"))
-    end
+    local Tabs = {
+        Main = Window:AddTab('Main'),
+        Player = Window:AddTab('Player'),
+        Hitbox = Window:AddTab('Hitbox'),
+        Automatic = Window:AddTab('Misc'),
+        ['UI Settings'] = Window:AddTab('UI Settings'),
+    }
 
 -- All the QB Aimbot variables and setup
 if string.split(identifyexecutor() or "None", " ")[1] ~= "Xeno" then
@@ -3698,7 +2898,7 @@ local FootballRemote = nil
 -- Create Highlight GUI
 local TargetHighlightGui = Instance.new("ScreenGui")
 TargetHighlightGui.Name = "QBTargetHighlightGui"
-TargetHighlightGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+TargetHighlightGui.Parent = game:GetService("CoreGui")
 TargetHighlightGui.ResetOnSpawn = false
 
 local TargetHighlight = Instance.new("Highlight")
@@ -3724,7 +2924,7 @@ local function updateAkiBeam(origin, vel3, T, gravity)
     if not qbTrajectoryEnabled or not qbAimbotEnabled then return end
     
     local g = Vector3.new(0, -gravity, 0)
-    local segmentCount = 25 -- OPTIMIZED: Reduced from 50 to 25 for better performance
+    local segmentCount = 50
     local lastPos = origin
     
     for i = 0, segmentCount do
@@ -3760,7 +2960,7 @@ end
 -- Create Lock Button
 local LockButtonGui = Instance.new("ScreenGui")
 LockButtonGui.Name = "QBLockTargetGui"
-LockButtonGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+LockButtonGui.Parent = game:GetService("CoreGui")
 LockButtonGui.ResetOnSpawn = false
 
 local LockButton = Instance.new("TextButton")
@@ -3775,7 +2975,7 @@ LockButton.Font = Enum.Font.GothamBold
 LockButton.TextSize = 12
 LockButton.Parent = LockButtonGui
 LockButton.AutoButtonColor = true
-setVisibleSafe(LockButton, false)
+LockButton.Visible = false
 
 local LockButtonCorner = Instance.new("UICorner")
 LockButtonCorner.CornerRadius = UDim.new(0, 12)
@@ -3812,10 +3012,10 @@ game:GetService("UserInputService").InputChanged:Connect(function(input)
 end)
 
 -- Create Info Cards
-local QBInfoCards = Instance.new('ScreenGui', game.Players.LocalPlayer:WaitForChild("PlayerGui"))
+local QBInfoCards = Instance.new('ScreenGui', game:GetService("CoreGui"))
 QBInfoCards.Name = "QBInfoCards"
 QBInfoCards.ResetOnSpawn = false
-setPropertySafe(QBInfoCards, "Enabled", false)
+QBInfoCards.Enabled = false
 
 local Player_Card = Instance.new('Frame', QBInfoCards)
 Player_Card.Name = "Player Card"
@@ -4054,19 +3254,11 @@ end
 
 local function UpdateTargetHighlight(player)
     if player and player.Character and qbHighlightEnabled then
-        pcall(function()
-            if TargetHighlight then
-                TargetHighlight.Adornee = player.Character
-                TargetHighlight.Enabled = true
-            end
-        end)
+        TargetHighlight.Adornee = player.Character
+        TargetHighlight.Enabled = true
     else
-        pcall(function()
-            if TargetHighlight then
-                TargetHighlight.Adornee = nil
-                TargetHighlight.Enabled = false
-            end
-        end)
+        TargetHighlight.Adornee = nil
+        TargetHighlight.Enabled = false
     end
 end
 
@@ -4083,55 +3275,45 @@ for _, Object in next, game:GetService("ReplicatedStorage"):GetDescendants() do
 end
 
 local __qbNamecall
-if hookmetamethod then
-    __qbNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-        local method = getnamecallmethod()
-        local args = {...}
-        local plr = game.Players.LocalPlayer
-        
-        if method == "FireServer" and args[1] == "Clicked" and qbAimbotEnabled and qbCurrentTargetPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
-            local headPos = plr.Character.Head.Position
-            local isPark = game.PlaceId == 8206123457
-            return __qbNamecall(self, "Clicked", headPos, headPos + qbData.Direction * 10000, isPark and qbData.Power or 1, qbData.Power)
-        end
-        
-        return __qbNamecall(self, ...)
-    end)
-end
+__qbNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+    local plr = game.Players.LocalPlayer
+    
+    if method == "FireServer" and args[1] == "Clicked" and qbAimbotEnabled and qbCurrentTargetPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
+        local headPos = plr.Character.Head.Position
+        local isPark = game.PlaceId == 8206123457
+        return __qbNamecall(self, "Clicked", headPos, headPos + qbData.Direction * 10000, isPark and qbData.Power or 1, qbData.Power)
+    end
+    
+    return __qbNamecall(self, ...)
+end)
 
-local QBAimbotGroup = Tabs.Main:AddSection('QB Aimbot', 1, 1)
+local QBAimbotGroup = Tabs.Main:AddLeftGroupbox('QB Aimbot')
 
-QBAimbotGroup:AddToggle({
-    enabled = true,
-    text = 'QB Aimbot',
-    flag = 'QBAimbot',
-    tooltip = 'Auto throw to receiver with prediction',
-    risky = false,
-    callback = function(value)
+QBAimbotGroup:AddToggle('QBAimbot', {
+    Text = 'QB Aimbot',
+    Default = false,
+    Tooltip = 'Auto throw to receiver with prediction',
+    Callback = function(value)
         qbAimbotEnabled = value
         if not value then
             UpdateTargetHighlight(nil)
             clearAkiBeam()
-            if LockButton and LockButton.Parent and typeof(LockButton) == "Instance" then
-                pcall(function() LockButton.Visible = false end)
-            end
-            if QBInfoCards then setPropertySafe(QBInfoCards, "Enabled", false) end
+            LockButton.Visible = false
+            QBInfoCards.Enabled = false
         else
-            if LockButton and LockButton.Parent and typeof(LockButton) == "Instance" then
-                pcall(function() LockButton.Visible = true end)
-            end
-            if QBInfoCards then setPropertySafe(QBInfoCards, "Enabled", true) end
+            LockButton.Visible = true
+            QBInfoCards.Enabled = true
         end
     end
 })
 
-QBAimbotGroup:AddToggle({
-    enabled = true,
-    text = 'Highlight Target',
-    flag = 'QBHighlight',
-    tooltip = 'Highlight selected receiver',
-    risky = false,
-    callback = function(value)
+QBAimbotGroup:AddToggle('QBHighlight', {
+    Text = 'Highlight Target',
+    Default = true,
+    Tooltip = 'Highlight selected receiver',
+    Callback = function(value)
         qbHighlightEnabled = value
         if not value then
             UpdateTargetHighlight(nil)
@@ -4139,13 +3321,11 @@ QBAimbotGroup:AddToggle({
     end
 })
 
-QBAimbotGroup:AddToggle({
-    enabled = true,
-    text = 'Show Trajectory Line',
-    flag = 'QBTrajectory',
-    tooltip = 'Show throw trajectory path',
-    risky = false,
-    callback = function(value)
+QBAimbotGroup:AddToggle('QBTrajectory', {
+    Text = 'Show Trajectory Line',
+    Default = true,
+    Tooltip = 'Show throw trajectory path',
+    Callback = function(value)
         qbTrajectoryEnabled = value
         if not value then
             clearAkiBeam()
@@ -4153,44 +3333,33 @@ QBAimbotGroup:AddToggle({
     end
 })
 
-QBAimbotGroup:AddSlider({
-    text = 'Max Air Time',
-    flag = 'MaxAirTime',
-    suffix = "",
-    min = 1,
-    max = 10,
-    increment = 1,
-    value = 3,
-    tooltip = 'Maximum ball flight time',
-    risky = false,
-    callback = function(value)
+QBAimbotGroup:AddSlider('MaxAirTime', {
+    Text = 'Max Air Time',
+    Default = 3,
+    Min = 1,
+    Max = 10,
+    Rounding = 1,
+    Compact = false,
+    Tooltip = 'Maximum ball flight time',
+    Callback = function(value)
         qbMaxAirTime = value
     end
 })
 
 -- Lock Button Click Handler
 LockButton.MouseButton1Click:Connect(function()
-    if not LockButton or not LockButton.Parent then return end
     if qbTargetLocked and qbLockedTargetPlayer then
         qbTargetLocked = false
         qbLockedTargetPlayer = nil
-        pcall(function()
-            if LockButton then
-                LockButton.Text = "LOCK"
-                LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
-            end
-        end)
+        LockButton.Text = "LOCK"
+        LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
     else
         local closestPlayer = getClosestPlayerInFront()
         if closestPlayer then
             qbLockedTargetPlayer = closestPlayer
             qbTargetLocked = true
-            pcall(function()
-                if LockButton then
-                    LockButton.Text = "LOCKED"
-                    LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-                end
-            end)
+            LockButton.Text = "LOCKED"
+            LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
         end
     end
 end)
@@ -4211,40 +3380,27 @@ game:GetService("UserInputService").InputBegan:Connect(function(Input, GameProce
                     ["Power"] = qbData.Power
                 },
             }
-            if FootballRemote then
-                pcall(function()
-                    FootballRemote:FireServer(unpack(ThrowArguments))
-                end)
-            end
+            FootballRemote:FireServer(unpack(ThrowArguments))
         end
     end
 
     if plr.PlayerGui:FindFirstChild("BallGui") then
-            if Input.KeyCode == Enum.KeyCode.G then
-                if not LockButton or not LockButton.Parent then return end
-                if qbTargetLocked and qbLockedTargetPlayer then
-                    qbTargetLocked = false
-                    qbLockedTargetPlayer = nil
-                    pcall(function()
-                        if LockButton then
-                            LockButton.Text = "LOCK"
-                            LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
-                        end
-                    end)
-                else
-                    local closestPlayer = getClosestPlayerInFront()
-                    if closestPlayer then
-                        qbLockedTargetPlayer = closestPlayer
-                        qbTargetLocked = true
-                        pcall(function()
-                            if LockButton then
-                                LockButton.Text = "LOCKED"
-                                LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-                            end
-                        end)
-                    end
+        if Input.KeyCode == Enum.KeyCode.G then
+            if qbTargetLocked and qbLockedTargetPlayer then
+                qbTargetLocked = false
+                qbLockedTargetPlayer = nil
+                LockButton.Text = "LOCK"
+                LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
+            else
+                local closestPlayer = getClosestPlayerInFront()
+                if closestPlayer then
+                    qbLockedTargetPlayer = closestPlayer
+                    qbTargetLocked = true
+                    LockButton.Text = "LOCKED"
+                    LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
                 end
             end
+        end
     end
 end)
 
@@ -4261,14 +3417,8 @@ task.spawn(function()
             TargetPlayer = getClosestPlayerInFront()
             if qbTargetLocked and not qbLockedTargetPlayer then
                 qbTargetLocked = false
-                if LockButton and LockButton.Parent then
-                    pcall(function()
-                        if LockButton then
-                            LockButton.Text = "LOCK"
-                            LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
-                        end
-                    end)
-                end
+                LockButton.Text = "LOCK"
+                LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
             end
         end
         qbCurrentTargetPlayer = TargetPlayer
@@ -4276,12 +3426,8 @@ task.spawn(function()
         if TargetPlayer and TargetPlayer.Character and TargetPlayer.Character:FindFirstChild("Head") then
             local target = TargetPlayer.Character
 
-            pcall(function()
-                if TargetHighlight then
-                    TargetHighlight.OutlineColor = Color3.fromRGB(153, 51, 255)
-                    TargetHighlight.FillColor = Color3.fromRGB(0, 0, 0)
-                end
-            end)
+            TargetHighlight.OutlineColor = Color3.fromRGB(153, 51, 255)
+            TargetHighlight.FillColor = Color3.fromRGB(0, 0, 0)
 
             local targetPos, power, flightTime, peakHeight, direction, vel3 = CalculateQBThrow(TargetPlayer)
 
@@ -4290,9 +3436,9 @@ task.spawn(function()
                 qbData.Power = power
                 qbData.Direction = direction
 
-                if ValuePower then pcall(function() ValuePower.Text = tostring(power) end) end
-                if ValuePlayer then pcall(function() ValuePlayer.Text = TargetPlayer.Name end) end
-                if ValueLocked then pcall(function() ValueLocked.Text = qbTargetLocked and "True" or "False" end) end
+                ValuePower.Text = tostring(power)
+                ValuePlayer.Text = TargetPlayer.Name
+                ValueLocked.Text = qbTargetLocked and "True" or "False"
 
                 UpdateTargetHighlight(TargetPlayer)
 
@@ -4309,33 +3455,21 @@ task.spawn(function()
                 end
 
                 if qbAimbotEnabled then
-                    if QBInfoCards and QBInfoCards.Parent then setPropertySafe(QBInfoCards, "Enabled", true) end
-                    if Player_Card and Player_Card.Parent and typeof(Player_Card) == "Instance" then 
-                        pcall(function() Player_Card.Visible = true end)
-                    end
-                    if PowerCard and PowerCard.Parent and typeof(PowerCard) == "Instance" then 
-                        pcall(function() PowerCard.Visible = true end)
-                    end
-                    if LockedCard and LockedCard.Parent and typeof(LockedCard) == "Instance" then 
-                        pcall(function() LockedCard.Visible = true end)
-                    end
+                    QBInfoCards.Enabled = true
+                    Player_Card.Visible = true
+                    PowerCard.Visible = true
+                    LockedCard.Visible = true
                 else
-                    if QBInfoCards and QBInfoCards.Parent then setPropertySafe(QBInfoCards, "Enabled", false) end
-                    if Player_Card and Player_Card.Parent and typeof(Player_Card) == "Instance" then 
-                        pcall(function() Player_Card.Visible = false end)
-                    end
-                    if PowerCard and PowerCard.Parent and typeof(PowerCard) == "Instance" then 
-                        pcall(function() PowerCard.Visible = false end)
-                    end
-                    if LockedCard and LockedCard.Parent and typeof(LockedCard) == "Instance" then 
-                        pcall(function() LockedCard.Visible = false end)
-                    end
+                    QBInfoCards.Enabled = false
+                    Player_Card.Visible = false
+                    PowerCard.Visible = false
+                    LockedCard.Visible = false
                 end
             else
                 clearAkiBeam()
             end
         else
-            if ValueLocked then pcall(function() ValueLocked.Text = "False" end) end
+            ValueLocked.Text = "False"
             UpdateTargetHighlight(nil)
             clearAkiBeam()
         end
@@ -4350,22 +3484,8 @@ local showHitbox = false
 local hitboxPart = nil
 
 local plr = game.Players.LocalPlayer
--- OPTIMIZED: Non-blocking character initialization
-local char = plr.Character
-local hrp = nil
-if char then
-    hrp = char:FindFirstChild('HumanoidRootPart')
-    if not hrp then
-        task.spawn(function()
-            hrp = char:WaitForChild('HumanoidRootPart', 5)
-        end)
-    end
-else
-    task.spawn(function()
-        char = plr.CharacterAdded:Wait()
-        hrp = char:WaitForChild('HumanoidRootPart', 5)
-    end)
-end
+local char = plr.Character or plr.CharacterAdded:Wait()
+local hrp = char:WaitForChild('HumanoidRootPart')
 
 local og1 = CFrame.new()
 local prvnt = false
@@ -4384,7 +3504,7 @@ end
 
 local function createHitbox()
     if hitboxPart then
-        pcall(function() hitboxPart:Destroy() end)
+        hitboxPart:Destroy()
     end
     
     hitboxPart = Instance.new("Part")
@@ -4404,7 +3524,7 @@ end
 
 local function removeHitbox()
     if hitboxPart then
-        pcall(function() hitboxPart:Destroy() end)
+        hitboxPart:Destroy()
         hitboxPart = nil
     end
 end
@@ -4414,12 +3534,8 @@ local function updateHitbox()
         if not hitboxPart then
             createHitbox()
         end
-        if hitboxPart and hitboxPart.Parent then
-            pcall(function()
-                hitboxPart.CFrame = theonern.CFrame
-                hitboxPart.Size = Vector3.new(magnetDistance * 2, magnetDistance * 2, magnetDistance * 2)
-            end)
-        end
+        hitboxPart.CFrame = theonern.CFrame
+        hitboxPart.Size = Vector3.new(magnetDistance * 2, magnetDistance * 2, magnetDistance * 2)
     elseif hitboxPart then
         removeHitbox()
     end
@@ -4444,12 +3560,7 @@ local function getPingMultiplier()
 end
 
 local function fbpos(fbtingy)
-    local id
-    if fbtingy.GetDebugId then
-        id = tostring(fbtingy:GetDebugId())
-    else
-        id = tostring(fbtingy) .. tostring(fbtingy:GetFullName())
-    end
+    local id = tostring(fbtingy:GetDebugId())
     local b4now = posCache[id]
     local rn = fbtingy.Position
     posCache[id] = rn
@@ -4473,12 +3584,7 @@ end
 
 local function udfr(fbtingy)
     theonern = fbtingy
-    local id
-    if fbtingy.GetDebugId then
-        id = tostring(fbtingy:GetDebugId())
-    else
-        id = tostring(fbtingy) .. tostring(fbtingy:GetFullName())
-    end
+    local id = tostring(fbtingy:GetDebugId())
     posCache[id] = fbtingy.Position
 end
 
@@ -4508,51 +3614,25 @@ workspace.DescendantRemoving:Connect(function(d)
     end
 end)
 
--- OPTIMIZED: Non-blocking initial football search to prevent freeze
-task.spawn(function()
-    task.wait(0.1) -- Small delay to prevent blocking on round start
-    pcall(function()
-        for _, d in next, workspace:GetDescendants() do
-            if isFootball and isFootball(d) then
-                if udfr then
-                    udfr(d)
-                end
-                if d.Parent and d.Parent:IsA('Model') and game.Players and game.Players.GetPlayerFromCharacter then
-                    local player = game.Players:GetPlayerFromCharacter(d.Parent)
-                    if player then
-                        ifsm1gotfb = true
-                    end
-                end
-            end
+for _, d in next, workspace:GetDescendants() do
+    if isFootball(d) then
+        udfr(d)
+        if d.Parent and d.Parent:IsA('Model') and game.Players:GetPlayerFromCharacter(d.Parent) then
+            ifsm1gotfb = true
         end
-    end)
-end)
+    end
+end
 
 local oind
-if hookmetamethod then
-    oind = hookmetamethod(game, '__index', function(self, key)
-        if magnetEnabled and (not checkcaller or not checkcaller()) and key == 'CFrame' and self == hrp and prvnt then
-            return og1
-        end
-        if oind then
-            return oind(self, key)
-        end
-    end)
-end
+oind = hookmetamethod(game, '__index', function(self, key)
+    if magnetEnabled and not checkcaller() and key == 'CFrame' and self == hrp and prvnt then
+        return og1
+    end
+    return oind(self, key)
+end)
 
 game:GetService('RunService').Heartbeat:Connect(function()
     updateHitbox()
-    
-    -- Safety check: ensure hrp exists before using it
-    if not hrp or not hrp.Parent then
-        if not char then
-            char = plr.Character
-            if char then
-                hrp = char:FindFirstChild('HumanoidRootPart')
-            end
-        end
-        if not hrp then return end
-    end
     
     if not magnetEnabled or not theonern or not theonern.Parent then 
         ifsm1gotfb = false
@@ -4584,43 +3664,29 @@ game:GetService('RunService').Heartbeat:Connect(function()
 
     int1 = Vector3.new(int1.X, math.max(int1.Y, pos.Y), int1.Z)
 
-    if hrp and hrp.Parent then
-        og1 = hrp.CFrame
-        prvnt = true
-        pcall(function()
-            if hrp then
-                hrp.CFrame = CFrame.new(int1)
-            end
-        end)
-        game:GetService('RunService').RenderStepped:Wait()
-        pcall(function()
-            if hrp then
-                hrp.CFrame = og1
-            end
-        end)
-        prvnt = false
-    end
+    og1 = hrp.CFrame
+    prvnt = true
+    hrp.CFrame = CFrame.new(int1)
+    game:GetService('RunService').RenderStepped:Wait()
+    hrp.CFrame = og1
+    prvnt = false
 end)
 
 plr.CharacterAdded:Connect(function(c2)
-    -- OPTIMIZED: Non-blocking character initialization
-    task.spawn(function()
-        char = c2
-        task.wait(0.01) -- Small delay to prevent blocking
-        hrp = c2:FindFirstChild('HumanoidRootPart') or c2:WaitForChild('HumanoidRootPart', 5)
-        prvnt = false
-        posCache = {}
-        removeHitbox()
-    end)
+    char = c2
+    hrp = c2:WaitForChild('HumanoidRootPart')
+    prvnt = false
+    posCache = {}
+    removeHitbox()
 end)
 
-local MagnetGroup = Tabs.Main:AddSection('Football Magnet', 1, 2)
+local MagnetGroup = Tabs.Main:AddLeftGroupbox('Football Magnet')
 
-MagnetGroup:AddToggle({
-    text = 'Desync Mags',
-    flag = 'FootballMagnet',
-    tooltip = 'Auto mags football to you when in range',
-    callback = function(value)
+MagnetGroup:AddToggle('FootballMagnet', {
+    Text = 'Desync Mags',
+    Default = false,
+    Tooltip = 'Auto mags football to you when in range',
+    Callback = function(value)
         magnetEnabled = value
         if not value then
             prvnt = false
@@ -4629,28 +3695,24 @@ MagnetGroup:AddToggle({
     end
 })
 
-MagnetGroup:AddSlider({
-    text = 'Magnet Distance',
-    flag = 'FootballDistance',
-    suffix = "",
-    min = 0,
-    max = 120,
-    increment = 1,
-    value = 120,
-    tooltip = 'Maximum distance to magnet from',
-    risky = false,
-    callback = function(value)
+MagnetGroup:AddSlider('FootballDistance', {
+    Text = 'Magnet Distance',
+    Default = 120,
+    Min = 0,
+    Max = 120,
+    Rounding = 0,
+    Compact = false,
+    Tooltip = 'Maximum distance to magnet from',
+    Callback = function(value)
         magnetDistance = value
     end
 })
 
-MagnetGroup:AddToggle({
-    enabled = true,
-    text = 'Show Hitbox',
-    flag = 'ShowHitbox',
-    tooltip = 'Show visual hitbox sphere',
-    risky = false,
-    callback = function(value)
+MagnetGroup:AddToggle('ShowHitbox', {
+    Text = 'Show Hitbox',
+    Default = false,
+    Tooltip = 'Show visual hitbox sphere',
+    Callback = function(value)
         showHitbox = value
         if not value then
             removeHitbox()
@@ -4660,107 +3722,88 @@ MagnetGroup:AddToggle({
 end
 
 
-    local LegitPullGroup = Tabs.Main:AddSection('Legit Pull Vector', 1, 3)
+    local LegitPullGroup = Tabs.Main:AddLeftGroupbox('Legit Pull Vector')
 
-    LegitPullGroup:AddToggle({
-        enabled = true,
-        text = 'Legit Pull Vector (M1)',
-        flag = 'SmoothPull',
-        tooltip = 'Smoothly pulls you to the football',
-        risky = false,
+    LegitPullGroup:AddToggle('SmoothPull', {
+        Text = 'Legit Pull Vector (M1)',
+        Default = false,
+        Tooltip = 'Smoothly pulls you to the football',
         callback = function(value)
             smoothPullEnabled = value
         end
     })
 
-    LegitPullGroup:AddSlider({
-        text = 'Vector Smoothing',
-        flag = 'MagnetSmoothness',
-        suffix = "",
-        min = 0.01,
-        max = 1.0,
-        increment = 0.01,
-        value = 0.20,
-        tooltip = 'Lower = smoother, Higher = faster',
-        risky = false,
+    LegitPullGroup:AddSlider('MagnetSmoothness', {
+        Text = 'Vector Smoothing',
+        Default = 0.20,
+        Min = 0.01,
+        Max = 1.0,
+        Rounding = 2,
+        Compact = false,
+        Tooltip = 'Lower = smoother, Higher = faster',
         callback = function(value)
             magnetSmoothness = value
         end
     })
 
-    local PullVectorGroup = Tabs.Main:AddSection('Pull Vector', 2, 1)
+    local PullVectorGroup = Tabs.Main:AddRightGroupbox('Pull Vector')
 
-    PullVectorGroup:AddToggle({
-        enabled = true,
-        text = 'Pull Vector (M1)',
-        flag = 'PullVector',
-        tooltip = 'Instantly teleports you to the football',
-        risky = false,
+    PullVectorGroup:AddToggle('PullVector', {
+        Text = 'Pull Vector (M1)',
+        Default = false,
+        Tooltip = 'Instantly teleports you to the football',
         callback = function(value)
             pullVectorEnabled = value
         end
     })
 
-    PullVectorGroup:AddToggle({
-        enabled = true,
-        text = 'Auto Offset Distance',
-        flag = 'AutoOffset',
-        tooltip = 'Automatically adjusts offset based on ball power (Not recommended for open park)',
-        risky = false,
+    PullVectorGroup:AddToggle('AutoOffset', {
+        Text = 'Auto Offset Distance',
+        Default = false,
+        Tooltip = 'Automatically adjusts offset based on ball power (Not recommended for open park)',
         callback = function(value)
             autoOffsetEnabled = value
         end
     })
 
-    PullVectorGroup:AddSlider({
-        text = 'Offset Distance',
-        flag = 'OffsetDistance',
-        suffix = "",
-        min = 0,
-        max = 30,
-        increment = 1,
-        value = 15,
-        tooltip = 'Distance in front of the ball',
-        risky = false,
+    PullVectorGroup:AddSlider('OffsetDistance', {
+        Text = 'Offset Distance',
+        Default = 15,
+        Min = 0,
+        Max = 30,
+        Rounding = 0,
+        Compact = false,
+        Tooltip = 'Distance in front of the ball',
         callback = function(value)
             offsetDistance = value
         end
     })
 
-    PullVectorGroup:AddSlider({
-        text = 'Max Pull Distance',
-        flag = 'MaxPullDistance',
-        suffix = "",
-        min = 1,
-        max = 100,
-        increment = 1,
-        value = 35,
-        tooltip = 'Maximum distance to pull from (Park only)',
-        risky = false,
+    PullVectorGroup:AddSlider('MaxPullDistance', {
+        Text = 'Max Pull Distance',
+        Default = 35,
+        Min = 1,
+        Max = 100,
+        Rounding = 0,
+        Compact = false,
+        Tooltip = 'Maximum distance to pull from (Park only)',
         callback = function(value)
             maxPullDistance = value
         end
     })
 
-    local WalkSpeedGroup = Tabs.Player:AddSection('WalkSpeed', 1)
-    
-    if not WalkSpeedGroup then
-        error("Failed to create WalkSpeedGroup section")
-    end
+    local WalkSpeedGroup = Tabs.Player:AddLeftGroupbox('WalkSpeed')
 
-    WalkSpeedGroup:AddList({
-        enabled = true,
-        text = 'Speed Method',
-        flag = 'SpeedMethod',
-        multi = false,
-        tooltip = 'Choose how speed boost works',
-        risky = false,
-        dragging = false,
-        focused = false,
-        value = 'WalkSpeed',
-        values = { 'WalkSpeed', 'CFrame' },
-        callback = function(value)
-            speedMethod = value
+    WalkSpeedGroup:AddDropdown('SpeedMethod', {
+        Values = { 'WalkSpeed', 'CFrame' },
+        Default = 1,
+        Multi = false,
+        Text = 'Speed Method',
+        Tooltip = 'Choose how speed boost works',
+    })
+
+    Options.SpeedMethod:OnChanged(function()
+        speedMethod = Options.SpeedMethod.Value
         
         -- Clean up old connections
         if walkSpeedConnection then
@@ -4784,16 +3827,16 @@ end
                     
                     local moveDir = hum.MoveDirection
                     if moveDir.Magnitude > 0 then
-                        root.CFrame = root.CFrame + (moveDir * cframeMultiplier * dt)
+                        root.CFrame = root.CFrame + (moveDir * Options.CFrameMultiplier.Value * dt)
                     end
                 end)
             else
                 local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
                 if humanoid then
-                    humanoid.WalkSpeed = walkSpeedValue
+                    humanoid.WalkSpeed = Options.WalkSpeedValue.Value
                     walkSpeedConnection = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
                         if walkSpeedEnabled then
-                            humanoid.WalkSpeed = walkSpeedValue
+                            humanoid.WalkSpeed = Options.WalkSpeedValue.Value
                         end
                     end)
                 end
@@ -4801,27 +3844,19 @@ end
         end
     end)
 
-    WalkSpeedGroup:AddSlider({
-        text = 'CFrame Speed Multiplier',
-        flag = 'CFrameMultiplier',
-        suffix = "",
-        min = 0.01,
-        max = 10,
-        increment = 0.01,
-        value = 5,
-        tooltip = "",
-        risky = false,
-        callback = function(value)
-            cframeMultiplier = value
-        end
+    WalkSpeedGroup:AddSlider('CFrameMultiplier', {
+        Text = 'CFrame Speed Multiplier',
+        Default = 5,
+        Min = 0.01,
+        Max = 10,
+        Rounding = 2,
+        Compact = false,
     })
 
-    WalkSpeedGroup:AddToggle({
-        enabled = true,
-        text = 'Enable Speed',
-        flag = 'WalkSpeedToggle',
-        tooltip = 'Increases your movement speed',
-        risky = false,
+    WalkSpeedGroup:AddToggle('WalkSpeedToggle', {
+        Text = 'Enable Speed',
+        Default = false,
+        Tooltip = 'Increases your movement speed',
         callback = function(value)
             walkSpeedEnabled = value
             
@@ -4835,7 +3870,7 @@ end
             end
             
             if value then
-                if speedMethod == "CFrame" then
+                if Options.SpeedMethod.Value == "CFrame" then
                     cframeSpeedConnection = RunService.RenderStepped:Connect(function(dt)
                         local char = plr.Character
                         if not char then return end
@@ -4846,16 +3881,16 @@ end
                         local moveDir = hum.MoveDirection
                         if moveDir.Magnitude > 0 then
                             local baseSpeed = hum.WalkSpeed or 16
-                            root.CFrame = root.CFrame + (moveDir.Unit * baseSpeed * cframeMultiplier * dt)
+                            root.CFrame = root.CFrame + (moveDir.Unit * baseSpeed * Options.CFrameMultiplier.Value * dt)
                         end
                     end)
                 else
                     local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
                     if humanoid then
-                        humanoid.WalkSpeed = walkSpeedValue
+                        humanoid.WalkSpeed = Options.WalkSpeedValue.Value
                         walkSpeedConnection = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
                             if walkSpeedEnabled then
-                                humanoid.WalkSpeed = walkSpeedValue
+                                humanoid.WalkSpeed = Options.WalkSpeedValue.Value
                             end
                         end)
                     end
@@ -4869,38 +3904,35 @@ end
         end
     })
 
-    WalkSpeedGroup:AddSlider({
-        text = 'WalkSpeed Value',
-        flag = 'WalkSpeedValue',
-        suffix = "",
-        min = 16,
-        max = 35,
-        increment = 1,
-        value = 25,
-        tooltip = "",
-        risky = false,
-        callback = function(value)
-            walkSpeedValue = value
-            if walkSpeedEnabled and speedMethod == "WalkSpeed" then
-                local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
-                if humanoid then
-                    humanoid.WalkSpeed = walkSpeedValue
-                end
-            end
-        end
+    WalkSpeedGroup:AddSlider('WalkSpeedValue', {
+        Text = 'WalkSpeed Value',
+        Default = 25,
+        Min = 16,
+        Max = 35,
+        Rounding = 0,
+        Compact = false,
     })
 
-    -- Note: Options:OnChanged removed - using callback functions in AddSlider/AddList instead
+    Options.WalkSpeedValue:OnChanged(function()
+        if walkSpeedEnabled and Options.SpeedMethod.Value == "WalkSpeed" then
+            local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid.WalkSpeed = Options.WalkSpeedValue.Value
+            end
+        end
+    end)
 
-    local JumpPowerGroup = Tabs.Player:AddSection('JumpPower')
+    Options.CFrameMultiplier:OnChanged(function()
+        -- CFrame multiplier updates automatically in the RenderStepped loop
+    end)
 
-    JumpPowerGroup:AddToggle({
-        enabled = true,
-        flag = 'JumpPowerToggle',
+    local JumpPowerGroup = Tabs.Player:AddLeftGroupbox('JumpPower')
+
+    JumpPowerGroup:AddToggle('JumpPowerToggle', {
         Text = 'JumpPower',
         Default = false,
         Tooltip = 'Increases your jump height',
-        Callback = function(value)
+        callback = function(value)
             jumpPowerEnabled = value
             if value then
                 if jumpConnection then jumpConnection:Disconnect() end
@@ -4917,41 +3949,32 @@ end
         end
     })
 
-    JumpPowerGroup:AddSlider({
-        text = 'Custom JumpPower',
-        flag = 'JumpPowerValue',
-        suffix = "",
-        min = 10,
-        max = 200,
-        increment = 1,
-        value = 50,
-        tooltip = "",
-        risky = false,
+    JumpPowerGroup:AddSlider('JumpPowerValue', {
+        Text = 'Custom JumpPower',
+        Default = 50,
+        Min = 10,
+        Max = 200,
+        Rounding = 0,
+        Compact = false,
         callback = function(value)
             customJumpPower = value
         end
     })
 
-    local FlyGroup = Tabs.Player:AddSection('Fly')
+    local FlyGroup = Tabs.Player:AddRightGroupbox('Fly')
 
-    FlyGroup:AddToggle({
-        enabled = true,
-        flag = 'FlyToggle',
+    FlyGroup:AddToggle('FlyToggle', {
         Text = 'Fly',
         Default = false,
         Tooltip = 'Allows your character to fly',
-        Callback = function(value)
+        callback = function(value)
             flyEnabled = value
             if value then
                 if not flyBodyVelocity then
                     flyBodyVelocity = Instance.new("BodyVelocity")
-                    pcall(function()
-                        if flyBodyVelocity then
-                            flyBodyVelocity.MaxForce = Vector3.new(100000, 100000, 100000)
-                            flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-                            flyBodyVelocity.Parent = humanoidRootPart
-                        end
-                    end)
+                    flyBodyVelocity.MaxForce = Vector3.new(100000, 100000, 100000)
+                    flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                    flyBodyVelocity.Parent = humanoidRootPart
                     flyBodyGyro = Instance.new("BodyGyro")
                     flyBodyGyro.MaxTorque = Vector3.new(100000, 100000, 100000)
                     flyBodyGyro.P = 1000
@@ -4969,80 +3992,61 @@ end
                             if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDirection = moveDirection + Vector3.new(0, 1, 0) end
                             if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDirection = moveDirection - Vector3.new(0, 1, 0) end
                             if moveDirection.Magnitude > 0 then
-                                pcall(function()
-                                    if flyBodyVelocity then
-                                        flyBodyVelocity.Velocity = moveDirection.Unit * flySpeed
-                                    end
-                                end)
+                                flyBodyVelocity.Velocity = moveDirection.Unit * flySpeed
                             else
-                                pcall(function()
-                                    if flyBodyVelocity then
-                                        flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-                                    end
-                                end)
+                                flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
                             end
                             wait()
                         end
                     end)
                 end
             else
-                if flyBodyVelocity then pcall(function() flyBodyVelocity:Destroy() end) flyBodyVelocity = nil end
-                if flyBodyGyro then pcall(function() flyBodyGyro:Destroy() end) flyBodyGyro = nil end
+                if flyBodyVelocity then flyBodyVelocity:Destroy() flyBodyVelocity = nil end
+                if flyBodyGyro then flyBodyGyro:Destroy() flyBodyGyro = nil end
                 isFlying = false
             end
         end
     })
 
-    FlyGroup:AddSlider({
-        text = 'Fly Speed',
-        flag = 'FlySpeed',
-        suffix = "",
-        min = 10,
-        max = 200,
-        increment = 1,
-        value = 50,
-        tooltip = "",
-        risky = false,
+    FlyGroup:AddSlider('FlySpeed', {
+        Text = 'Fly Speed',
+        Default = 50,
+        Min = 10,
+        Max = 200,
+        Rounding = 0,
+        Compact = false,
         callback = function(value)
             flySpeed = value
         end
     })
 
-    local StaminaGroup = Tabs.Player:AddSection('Stamina')
+    local StaminaGroup = Tabs.Player:AddRightGroupbox('Stamina')
 
-    StaminaGroup:AddToggle({
-        enabled = true,
-        text = '(High Unc) Stamina Depletion',
-        flag = 'StaminaDepletion',
-        tooltip = 'Reduces stamina depletion rate',
-        risky = false,
+    StaminaGroup:AddToggle('StaminaDepletion', {
+        Text = '(High Unc) Stamina Depletion',
+        Default = false,
+        Tooltip = 'Reduces stamina depletion rate',
         callback = function(enabled)
             staminaDepletionEnabled = enabled
             spawn(function()
                 while staminaDepletionEnabled do
                     task.wait()
                     if mechMod and OldStam > mechMod.Stamina then
-                        pcall(function()
-                            if mechMod then
-                                mechMod.Stamina = mechMod.Stamina + (staminaDepletionRate * 0.001)
-                            end
-                        end)
+                        mechMod.Stamina = mechMod.Stamina + (staminaDepletionRate * 0.001)
                     end
                 end
             end)
         end
     })
 
-    StaminaGroup:AddSlider({
-        text = 'Stamina Depletion Rate',
-        flag = 'StaminaDepletionRate',
-        suffix = "",
-        min = 1,
-        max = 100,
-        increment = 1,
-        value = 1,
-        tooltip = 'Higher = lower depletion',
-        risky = false,
+    StaminaGroup:AddSlider('StaminaDepletionRate', {
+        Text = 'Stamina Depletion Rate',
+        Default = 1,
+        Min = 1,
+        Max = 100,
+        Rounding = 1,
+        Compact = false,
+        Tooltip = 'Higher = lower depletion',
         callback = function(value)
             staminaDepletionRate = value
         end
@@ -5076,13 +4080,11 @@ end
         return nil
     end
 
-    StaminaGroup:AddToggle({
-        enabled = true,
-        flag = "InfiniteStaminaToggle",
+    StaminaGroup:AddToggle("InfiniteStaminaToggle", {
         Text = "( Low Unc ) Infinite Stamina",
         Default = false,
         Tooltip = "Infinite Stamina for low unc executors",
-        Callback = function(value)
+        callback = function(value)
             infiniteStaminaEnabled = value
         end
     })
@@ -5110,14 +4112,12 @@ end
         end)
     end
 
-    local JumpBoostGroup = Tabs.Player:AddSection('Jump Boost')
+    local JumpBoostGroup = Tabs.Player:AddLeftGroupbox('Jump Boost')
 
-    JumpBoostGroup:AddToggle({
-        enabled = true,
-        text = 'Jump Boost',
-        flag = 'JumpBoostToggle',
-        tooltip = 'Boosts you up when colliding with players',
-        risky = false,
+    JumpBoostGroup:AddToggle('JumpBoostToggle', {
+        Text = 'Jump Boost',
+        Default = false,
+        Tooltip = 'Boosts you up when colliding with players',
         callback = function(value)
             jumpBoostEnabled = value
             
@@ -5131,56 +4131,48 @@ end
         end
     })
 
-    JumpBoostGroup:AddToggle({
-        enabled = true,
-        text = 'Always Boost Mode',
-        flag = 'JumpBoostTradeMode',
-        tooltip = 'Boost on any player collision (no ball required)',
-        risky = false,
+    JumpBoostGroup:AddToggle('JumpBoostTradeMode', {
+        Text = 'Always Boost Mode',
+        Default = false,
+        Tooltip = 'Boost on any player collision (no ball required)',
         callback = function(value)
             jumpBoostTradeMode = value
         end
     })
 
-    JumpBoostGroup:AddSlider({
-        text = 'Boost Force',
-        flag = 'BoostForce',
-        suffix = "",
-        min = 10,
-        max = 100,
-        increment = 1,
-        value = 32,
-        tooltip = 'How high you get boosted',
-        risky = false,
+    JumpBoostGroup:AddSlider('BoostForce', {
+        Text = 'Boost Force',
+        Default = 32,
+        Min = 10,
+        Max = 100,
+        Rounding = 0,
+        Compact = false,
+        Tooltip = 'How high you get boosted',
         callback = function(value)
             BOOST_FORCE_Y = value
         end
     })
 
-    JumpBoostGroup:AddSlider({
-        text = 'Boost Cooldown',
-        flag = 'BoostCooldown',
-        suffix = "",
-        min = 0.1,
-        max = 5,
-        increment = 0.1,
-        value = 1,
-        tooltip = 'Cooldown between boosts (seconds)',
-        risky = false,
+    JumpBoostGroup:AddSlider('BoostCooldown', {
+        Text = 'Boost Cooldown',
+        Default = 1,
+        Min = 0.1,
+        Max = 5,
+        Rounding = 1,
+        Compact = false,
+        Tooltip = 'Cooldown between boosts (seconds)',
         callback = function(value)
             BOOST_COOLDOWN = value
         end
     })
 
-    local DiveBoostGroup = Tabs.Player:AddSection('Dive Boost')
+    local DiveBoostGroup = Tabs.Player:AddLeftGroupbox('Dive Boost')
 
-    DiveBoostGroup:AddToggle({
-        enabled = true,
-        flag = 'DiveBoostToggle',
+    DiveBoostGroup:AddToggle('DiveBoostToggle', {
         Text = 'Dive Boost',
         Default = false,
         Tooltip = 'Makes you dive further',
-        Callback = function(value)
+        callback = function(value)
             diveBoostEnabled = value
             
             if diveBoostConnection then
@@ -5196,45 +4188,39 @@ end
         end
     })
 
-    DiveBoostGroup:AddSlider({
-        text = 'Dive Power',
-        flag = 'DiveBoostPower',
-        suffix = "",
-        min = 2.2,
-        max = 10,
-        increment = 0.1,
-        value = 2.2,
-        tooltip = 'How far you dive (default: 2.2)',
-        risky = false,
+    DiveBoostGroup:AddSlider('DiveBoostPower', {
+        Text = 'Dive Power',
+        Default = 2.2,
+        Min = 2.2,
+        Max = 10,
+        Rounding = 1,
+        Compact = false,
+        Tooltip = 'How far you dive (default: 2.2)',
         callback = function(value)
             diveBoostPower = value
         end
     })
 
-    DiveBoostGroup:AddSlider({
-        text = 'Dive Boost Cooldown',
-        flag = 'DiveBoostCooldown',
-        suffix = "",
-        min = 0.1,
-        max = 5,
-        increment = 0.1,
-        value = 2,
-        tooltip = 'Cooldown between dive boosts (seconds)',
-        risky = false,
+    DiveBoostGroup:AddSlider('DiveBoostCooldown', {
+        Text = 'Dive Boost Cooldown',
+        Default = 2,
+        Min = 0.1,
+        Max = 5,
+        Rounding = 1,
+        Compact = false,
+        Tooltip = 'Cooldown between dive boosts (seconds)',
         callback = function(value)
             DIVE_BOOST_COOLDOWN = value
         end
     })
 
-    local BigHeadGroup = Tabs.Player:AddSection('BigHead')
+    local BigHeadGroup = Tabs.Player:AddRightGroupbox('BigHead')
 
-    BigHeadGroup:AddToggle({
-        enabled = true,
-        flag = 'BigheadToggle',
+    BigHeadGroup:AddToggle('BigheadToggle', {
         Text = 'Bighead Collision',
         Default = false,
         Tooltip = 'Enlarge players heads for easier tackles',
-        Callback = function(value)
+        callback = function(value)
             bigheadEnabled = value
 
             if value then
@@ -5275,45 +4261,39 @@ end
         end
     })
 
-    BigHeadGroup:AddSlider({
-        text = 'Head Size',
-        flag = 'BigheadSize',
-        suffix = "",
-        min = 1,
-        max = 10,
-        increment = 0.1,
-        value = 1,
-        tooltip = 'Size multiplier for head',
-        risky = false,
+    BigHeadGroup:AddSlider('BigheadSize', {
+        Text = 'Head Size',
+        Default = 1,
+        Min = 1,
+        Max = 10,
+        Rounding = 1,
+        Compact = false,
+        Tooltip = 'Size multiplier for head',
         callback = function(value)
             bigheadSize = value
         end
     })
 
-    BigHeadGroup:AddSlider({
-        text = 'Head Transparency',
-        flag = 'BigheadTransparency',
-        suffix = "",
-        min = 0,
-        max = 1,
-        increment = 0.01,
-        value = 0.5,
-        tooltip = 'Adjust the transparency of enlarged heads',
-        risky = false,
+    BigHeadGroup:AddSlider('BigheadTransparency', {
+        Text = 'Head Transparency',
+        Default = 0.5,
+        Min = 0,
+        Max = 1,
+        Rounding = 2,
+        Compact = false,
+        Tooltip = 'Adjust the transparency of enlarged heads',
         callback = function(value)
             bigheadTransparency = value
         end
     })
 
-    local TackleReachGroup = Tabs.Hitbox:AddSection('Tackle Reach')
+    local TackleReachGroup = Tabs.Hitbox:AddLeftGroupbox('Tackle Reach')
 
-    TackleReachGroup:AddToggle({
-        enabled = true,
-        flag = 'TackleReachToggle',
+    TackleReachGroup:AddToggle('TackleReachToggle', {
         Text = 'Tackle Reach',
         Default = false,
         Tooltip = 'Expands your reach for tackling',
-        Callback = function(enabled)
+        callback = function(enabled)
             tackleReachEnabled = enabled
 
             if tackleReachConnection then
@@ -5369,54 +4349,46 @@ end
         end
     })
 
-    TackleReachGroup:AddSlider({
-        text = 'Reach Distance',
-        flag = 'TackleReachDistance',
-        suffix = "",
-        min = 1,
-        max = 10,
-        increment = 0.1,
-        value = 5,
-        tooltip = 'Maximum distance for tackle reach',
-        risky = false,
+    TackleReachGroup:AddSlider('TackleReachDistance', {
+        Text = 'Reach Distance',
+        Default = 5,
+        Min = 1,
+        Max = 10,
+        Rounding = 1,
+        Compact = false,
+        Tooltip = 'Maximum distance for tackle reach',
         callback = function(value)
             tackleReachDistance = value
         end
     })
 
-    local Anti = Tabs.Hitbox:AddSection('Anti')
+    local Anti = Tabs.Hitbox:AddLeftGroupbox('Anti')
 
-    Anti:AddToggle({
-        enabled = true,
-        flag = 'AntiBlock',
+    Anti:AddToggle('AntiBlock', {
         Text = 'Anti Block (Worst)',
         Default = false,
         Tooltip = 'Enables Noclip so you can pass through players!',
-        Callback = function(value)
+        callback = function(value)
             getgenv().AntiBlock = value
         end
     })
 
-    Anti:AddToggle({
-        enabled = true,
-        flag = 'AntiBlock2',
+    Anti:AddToggle('AntiBlock2', {
         Text = 'Anti Block Method 2 (Blatant)',
         Default = false,
         Tooltip = 'Makes you faster to the point you zip through defenders',
-        Callback = function(value)
+        callback = function(value)
             getgenv().tpwalk = value
         end
     })
 
-    local PlayerHitboxGroup = Tabs.Hitbox:AddSection('Player Hitbox')
+    local PlayerHitboxGroup = Tabs.Hitbox:AddRightGroupbox('Player Hitbox')
 
-    PlayerHitboxGroup:AddToggle({
-        enabled = true,
-        flag = 'PlayerHitboxToggle',
+    PlayerHitboxGroup:AddToggle('PlayerHitboxToggle', {
         Text = 'Player Hitbox Expander',
         Default = false,
         Tooltip = 'Expands other players hitboxes for blocking, tackling & etc',
-        Callback = function(enabled)
+        callback = function(enabled)
             playerHitboxEnabled = enabled
 
             if playerHitboxConnection then
@@ -5474,46 +4446,39 @@ end
         end
     })
 
-    PlayerHitboxGroup:AddSlider({
-        text = 'Hitbox Size',
-        flag = 'PlayerHitboxSize',
-        suffix = "",
-        min = 2,
-        max = 50,
-        increment = 1,
-        value = 5,
-        tooltip = 'Size of player hitboxes',
-        risky = false,
+    PlayerHitboxGroup:AddSlider('PlayerHitboxSize', {
+        Text = 'Hitbox Size',
+        Default = 5,
+        Min = 2,
+        Max = 50,
+        Rounding = 1,
+        Compact = false,
+        Tooltip = 'Size of player hitboxes',
         callback = function(value)
             playerHitboxSize = value
         end
     })
 
-    PlayerHitboxGroup:AddSlider({
-        text = 'Hitbox Transparency',
-        flag = 'PlayerHitboxTransparency',
-        suffix = "",
-        min = 0,
-        max = 1,
-        increment = 0.01,
-        value = 0.7,
-        tooltip = "",
-        risky = false,
+    PlayerHitboxGroup:AddSlider('PlayerHitboxTransparency', {
+        Text = 'Hitbox Transparency',
+        Default = 0.7,
+        Min = 0,
+        Max = 1,
+        Rounding = 1,
+        Compact = false,
         Tooltip = 'Transparency of player hitboxes (0 = visible, 1 = invisible)',
-        Callback = function(value)
+        callback = function(value)
             playerHitboxTransparency = value
         end
     })
 
-    local AutoRushGroup = Tabs.Player:AddSection('Auto Rush')
+    local AutoRushGroup = Tabs.Player:AddRightGroupbox('Auto Rush')
 
-    AutoRushGroup:AddToggle({
-        enabled = true,
-        flag = 'AutoFollowBallCarrier',
+    AutoRushGroup:AddToggle('AutoFollowBallCarrier', {
         Text = 'Auto Follow Ball Carrier',
         Default = false,
         Tooltip = 'Automatically follows the ball carrier',
-        Callback = function(enabled)
+        callback = function(enabled)
             autoFollowBallCarrierEnabled = enabled
 
             if autoFollowConnection then
@@ -5540,30 +4505,26 @@ end
         end
     })
 
-    AutoRushGroup:AddSlider({
-        text = 'Follow Blatancy',
-        flag = 'AutoFollowBlatancy',
-        suffix = "",
-        min = 0,
-        max = 1,
-        increment = 0.01,
-        value = 0.5,
-        tooltip = 'How aggressive the auto-follow predicts/cuts off the ball carrier',
-        risky = false,
+    AutoRushGroup:AddSlider('AutoFollowBlatancy', {
+        Text = 'Follow Blatancy',
+        Default = 0.5,
+        Min = 0,
+        Max = 1,
+        Rounding = 2,
+        Compact = false,
+        Tooltip = 'How aggressive the auto-follow predicts/cuts off the ball carrier',
         callback = function(value)
             autoFollowBlatancy = value
         end
     })
 
-    local TeleportGroup = Tabs.Player:AddSection('Teleport')
+    local TeleportGroup = Tabs.Player:AddRightGroupbox('Teleport')
 
-    TeleportGroup:AddToggle({
-        enabled = true,
-        flag = 'TeleportForward',
+    TeleportGroup:AddToggle('TeleportForward', {
         Text = 'Teleport Forward (Z)',
         Default = false,
         Tooltip = 'Teleports you forward 3 studs when pressing Z',
-        Callback = function(value)
+        callback = function(value)
             teleportForwardEnabled = value
         end
     })
@@ -5592,21 +4553,19 @@ end
         Tooltip = 'Instantly teleport to endzone 2'
     })
 
-    local KickGroup = Tabs.Automatic:AddSection('Misc')
-    local SackGroup = Tabs.Automatic:AddSection('Sacking')
+    local KickGroup = Tabs.Automatic:AddLeftGroupbox('Misc')
+    local SackGroup = Tabs.Automatic:AddRightGroupbox('Sacking')
 
-    KickGroup:AddToggle({
-        enabled = true,
-        flag = 'KickAimbot',
+    KickGroup:AddToggle('KickAimbot', {
         Text = 'Kick Aimbot (L)',
         Default = false,
         Tooltip = 'Max power & accuracy kick when pressing L',
-        Callback = function(value)
+        callback = function(value)
             kickingAimbotEnabled = value
         end
     })
 
-local AutoTouchdown = Tabs.Automatic:AddSection('Touchdown')
+local AutoTouchdown = Tabs.Automatic:AddRightGroupbox('Touchdown')
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -5688,9 +4647,7 @@ if p == player then
 end
 end)
 
-AutoTouchdown:AddToggle({
-    enabled = true,
-    flag = 'AutoTouchdown',
+AutoTouchdown:AddToggle('AutoTouchdown', {
 Text = 'Auto Touchdown',
 Default = false,
 Tooltip = 'When you have the ball it will automatically touchdown for 6 points',
@@ -5818,13 +4775,11 @@ end
         end
     end)
     
-    SackGroup:AddToggle({
-        enabled = true,
-        flag = 'AutoSack',
+    SackGroup:AddToggle('AutoSack', {
         Text = 'Auto Sack',
         Default = false,
         Tooltip = 'Automatically Sacks The Enemy Quarterback',
-        Callback = function(value)
+        callback = function(value)
             getgenv().AutoSack = value
         end
     })
@@ -5883,28 +4838,28 @@ end
 
     local isBlacklisted, reason = checkBlacklist()
     if isBlacklisted then
-        logAction("🚫 BLACKLISTED USER DETECTED", 
+        logAction("ðŸš« BLACKLISTED USER DETECTED", 
             "HWID: " .. playerHWID .. "\nReason: " .. (reason or "Violation of Terms"), 
             true)
         
-        player:Kick("⛔ Access Denied\n\nYou have been blacklisted from Arsonuf.\nReason: MY FAULT OG " .. (reason or "Violation of Terms"))
+        player:Kick("â›” Access Denied\n\nYou have been blacklisted from Kali Hub.\nReason: MY FAULT OG " .. (reason or "Violation of Terms"))
         return
     end
 
     task.spawn(function()
         while task.wait(5) do
             if checkBlacklist() then
-                logAction("🚫 BLACKLISTED (LIVE KICK)", 
+                logAction("ðŸš« BLACKLISTED (LIVE KICK)", 
                     "HWID: " .. playerHWID .. "\nKicked during active session", 
                     true)
                 
-                player:Kick("⛔ Access Denied\n\nYou have been blacklisted from Arsonuf.")
+                player:Kick("â›” Access Denied\n\nYou have been blacklisted from Kali Hub.")
                 return
             end
         end
     end)
 
-local AutoCatch = Tabs.Automatic:AddSection('Catching')
+local AutoCatch = Tabs.Automatic:AddRightGroupbox('Catching')
 
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -5993,18 +4948,7 @@ local function catchBall()
         true
     }
     
-    local gamesFolder = ReplicatedStorage:WaitForChild("Games", 5)
-    if gamesFolder then
-        local gameFolder = gamesFolder:WaitForChild(gameId, 5)
-        if gameFolder then
-            local reEvent = gameFolder:WaitForChild("ReEvent", 5)
-            if reEvent then
-                pcall(function()
-                    reEvent:FireServer(unpack(args))
-                end)
-            end
-        end
-    end
+    ReplicatedStorage:WaitForChild("Games"):WaitForChild(gameId):WaitForChild("ReEvent"):FireServer(unpack(args))
 end
 
 local lastCheck = 0
@@ -6028,9 +4972,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-AutoCatch:AddToggle({
-    enabled = true,
-    flag = 'AutoCatch',
+AutoCatch:AddToggle('AutoCatch', {
     Text = 'Auto Catch',
     Default = false,
     Tooltip = 'In radius, it will automatically click',
@@ -6039,28 +4981,24 @@ AutoCatch:AddToggle({
     end
 })
 
-AutoCatch:AddSlider({
-    text = 'Radius',
-    flag = 'AutoCatchSlider',
-    suffix = "",
-    min = 0,
-    max = 35,
-    increment = 0.1,
-    value = 0,
-    tooltip = 'The radius for auto catch to click',
-    risky = false,
-    callback = function(value)
+AutoCatch:AddSlider('AutoCatchSlider', {
+    Text = 'Radius',
+    Default = 0,
+    Min = 0,
+    Max = 35,
+    Rounding = 2,
+    Compact = false,
+    Tooltip = 'The radius for auto catch to click',
+    Callback = function(value)
         autoCatchRadius = value
     end
 })
 
-    KickGroup:AddToggle({
-        enabled = true,
-        flag = 'AntiAFK',
+    KickGroup:AddToggle('AntiAFK', {
         Text = 'Anti-AFK',
         Default = false,
         Tooltip = 'Prevents you from being kicked for inactivity',
-        Callback = function(enabled)
+        callback = function(enabled)
             if enabled then
                 local VirtualUser = game:GetService("VirtualUser")
                 game:GetService("Players").LocalPlayer.Idled:Connect(function()
@@ -6104,7 +5042,7 @@ AutoCatch:AddSlider({
         end
     end)
     
-    local MenuGroup = Tabs['UI Settings']:AddSection('Menu')
+    local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
     MenuGroup:AddButton('Unload', function() Library:Unload() end)
     MenuGroup:AddLabel('Menu bind'):AddKeyPicker('MenuKeybind', { Default = 'LeftControl', NoUI = true, Text = 'Menu keybind' })
 
@@ -6117,17 +5055,14 @@ AutoCatch:AddSlider({
     SaveManager:SetIgnoreIndexes({ 'MenuKeybind' })
 
     ThemeManager:SetFolder('NFLUniverse')
-    SaveManager:SetFolder('NFLUniverse/Arsonuf')
+    SaveManager:SetFolder('NFLUniverse/KaliHub')
 
-    -- Add Settings Tab (Informant has built-in settings)
-    informantLib:CreateSettingsTab(Window)
-    
-    -- Ensure window is open and visible
-    if Window and Window.SetOpen then
-        Window:SetOpen(true)
-    end
+    SaveManager:BuildConfigSection(Tabs['UI Settings'])
+    ThemeManager:ApplyToTab(Tabs['UI Settings'])
 
-    informantLib:SendNotification('Arson UF loaded successfully!', 5, Color3.new(0, 255, 0))
+    SaveManager:LoadAutoloadConfig()
+
+    Library:Notify('Kali Hub loaded successfully!', 5)
 
     game.Players.PlayerRemoving:Connect(function(p)
         if p == plr then
@@ -6135,3 +5070,4 @@ AutoCatch:AddSlider({
         end
     end)
 end
+
