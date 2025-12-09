@@ -2033,13 +2033,15 @@ end
                 end)
             end)
 
-            local MagnetSection = MainTab:CreateSection("Magnets")
+            local MagnetSection = MainTab:AddSection("Magnets", 1, 1)
 
-            local MagnetToggle = MainTab:CreateToggle({
-                Name = "Desync Mags",
-                CurrentValue = false,
-                Flag = "FootballMagnet",
-                Callback = function(Value)
+            MagnetSection:AddToggle({
+                enabled = true,
+                text = "Desync Mags",
+                flag = "FootballMagnet",
+                tooltip = "",
+                risky = false,
+                callback = function(Value)
                     magnetEnabled = Value
                     if not Value then
                         prvnt = false
@@ -4626,11 +4628,13 @@ end
 
     local LegitPullGroup = Tabs.Main:AddSection('Legit Pull Vector', 1, 3)
 
-    LegitPullGroup:AddToggle('SmoothPull', {
-        Text = 'Legit Pull Vector (M1)',
-        Default = false,
-        Tooltip = 'Smoothly pulls you to the football',
-        Callback = function(value)
+    LegitPullGroup:AddToggle({
+        enabled = true,
+        text = 'Legit Pull Vector (M1)',
+        flag = 'SmoothPull',
+        tooltip = 'Smoothly pulls you to the football',
+        risky = false,
+        callback = function(value)
             smoothPullEnabled = value
         end
     })
@@ -4650,20 +4654,24 @@ end
 
     local PullVectorGroup = Tabs.Main:AddSection('Pull Vector', 2, 1)
 
-    PullVectorGroup:AddToggle('PullVector', {
-        Text = 'Pull Vector (M1)',
-        Default = false,
-        Tooltip = 'Instantly teleports you to the football',
-        Callback = function(value)
+    PullVectorGroup:AddToggle({
+        enabled = true,
+        text = 'Pull Vector (M1)',
+        flag = 'PullVector',
+        tooltip = 'Instantly teleports you to the football',
+        risky = false,
+        callback = function(value)
             pullVectorEnabled = value
         end
     })
 
-    PullVectorGroup:AddToggle('AutoOffset', {
-        Text = 'Auto Offset Distance',
-        Default = false,
-        Tooltip = 'Automatically adjusts offset based on ball power (Not recommended for open park)',
-        Callback = function(value)
+    PullVectorGroup:AddToggle({
+        enabled = true,
+        text = 'Auto Offset Distance',
+        flag = 'AutoOffset',
+        tooltip = 'Automatically adjusts offset based on ball power (Not recommended for open park)',
+        risky = false,
+        callback = function(value)
             autoOffsetEnabled = value
         end
     })
@@ -4757,11 +4765,13 @@ end
         Compact = false,
     })
 
-    WalkSpeedGroup:AddToggle('WalkSpeedToggle', {
-        Text = 'Enable Speed',
-        Default = false,
-        Tooltip = 'Increases your movement speed',
-        Callback = function(value)
+    WalkSpeedGroup:AddToggle({
+        enabled = true,
+        text = 'Enable Speed',
+        flag = 'WalkSpeedToggle',
+        tooltip = 'Increases your movement speed',
+        risky = false,
+        callback = function(value)
             walkSpeedEnabled = value
             
             if walkSpeedConnection then
@@ -4832,7 +4842,9 @@ end
 
     local JumpPowerGroup = Tabs.Player:AddSection('JumpPower')
 
-    JumpPowerGroup:AddToggle('JumpPowerToggle', {
+    JumpPowerGroup:AddToggle({
+        enabled = true,
+        flag = 'JumpPowerToggle',
         Text = 'JumpPower',
         Default = false,
         Tooltip = 'Increases your jump height',
@@ -4867,7 +4879,9 @@ end
 
     local FlyGroup = Tabs.Player:AddSection('Fly')
 
-    FlyGroup:AddToggle('FlyToggle', {
+    FlyGroup:AddToggle({
+        enabled = true,
+        flag = 'FlyToggle',
         Text = 'Fly',
         Default = false,
         Tooltip = 'Allows your character to fly',
@@ -4938,7 +4952,9 @@ end
 
     local StaminaGroup = Tabs.Player:AddSection('Stamina')
 
-    StaminaGroup:AddToggle('StaminaDepletion', {
+    StaminaGroup:AddToggle({
+        enabled = true,
+        flag = 'StaminaDepletion',
         Text = '(High Unc) Stamina Depletion',
         Default = false,
         Tooltip = 'Reduces stamina depletion rate',
@@ -5000,7 +5016,9 @@ end
         return nil
     end
 
-    StaminaGroup:AddToggle("InfiniteStaminaToggle", {
+    StaminaGroup:AddToggle({
+        enabled = true,
+        flag = "InfiniteStaminaToggle",
         Text = "( Low Unc ) Infinite Stamina",
         Default = false,
         Tooltip = "Infinite Stamina for low unc executors",
@@ -5034,11 +5052,13 @@ end
 
     local JumpBoostGroup = Tabs.Player:AddSection('Jump Boost')
 
-    JumpBoostGroup:AddToggle('JumpBoostToggle', {
-        Text = 'Jump Boost',
-        Default = false,
-        Tooltip = 'Boosts you up when colliding with players',
-        Callback = function(value)
+    JumpBoostGroup:AddToggle({
+        enabled = true,
+        text = 'Jump Boost',
+        flag = 'JumpBoostToggle',
+        tooltip = 'Boosts you up when colliding with players',
+        risky = false,
+        callback = function(value)
             jumpBoostEnabled = value
             
             if value then
@@ -5051,11 +5071,13 @@ end
         end
     })
 
-    JumpBoostGroup:AddToggle('JumpBoostTradeMode', {
-        Text = 'Always Boost Mode',
-        Default = false,
-        Tooltip = 'Boost on any player collision (no ball required)',
-        Callback = function(value)
+    JumpBoostGroup:AddToggle({
+        enabled = true,
+        text = 'Always Boost Mode',
+        flag = 'JumpBoostTradeMode',
+        tooltip = 'Boost on any player collision (no ball required)',
+        risky = false,
+        callback = function(value)
             jumpBoostTradeMode = value
         end
     })
@@ -5088,7 +5110,9 @@ end
 
     local DiveBoostGroup = Tabs.Player:AddSection('Dive Boost')
 
-    DiveBoostGroup:AddToggle('DiveBoostToggle', {
+    DiveBoostGroup:AddToggle({
+        enabled = true,
+        flag = 'DiveBoostToggle',
         Text = 'Dive Boost',
         Default = false,
         Tooltip = 'Makes you dive further',
@@ -5136,7 +5160,9 @@ end
 
     local BigHeadGroup = Tabs.Player:AddSection('BigHead')
 
-    BigHeadGroup:AddToggle('BigheadToggle', {
+    BigHeadGroup:AddToggle({
+        enabled = true,
+        flag = 'BigheadToggle',
         Text = 'Bighead Collision',
         Default = false,
         Tooltip = 'Enlarge players heads for easier tackles',
@@ -5209,7 +5235,9 @@ end
 
     local TackleReachGroup = Tabs.Hitbox:AddSection('Tackle Reach')
 
-    TackleReachGroup:AddToggle('TackleReachToggle', {
+    TackleReachGroup:AddToggle({
+        enabled = true,
+        flag = 'TackleReachToggle',
         Text = 'Tackle Reach',
         Default = false,
         Tooltip = 'Expands your reach for tackling',
@@ -5284,7 +5312,9 @@ end
 
     local Anti = Tabs.Hitbox:AddSection('Anti')
 
-    Anti:AddToggle('AntiBlock', {
+    Anti:AddToggle({
+        enabled = true,
+        flag = 'AntiBlock',
         Text = 'Anti Block (Worst)',
         Default = false,
         Tooltip = 'Enables Noclip so you can pass through players!',
@@ -5293,7 +5323,9 @@ end
         end
     })
 
-    Anti:AddToggle('AntiBlock2', {
+    Anti:AddToggle({
+        enabled = true,
+        flag = 'AntiBlock2',
         Text = 'Anti Block Method 2 (Blatant)',
         Default = false,
         Tooltip = 'Makes you faster to the point you zip through defenders',
@@ -5304,7 +5336,9 @@ end
 
     local PlayerHitboxGroup = Tabs.Hitbox:AddSection('Player Hitbox')
 
-    PlayerHitboxGroup:AddToggle('PlayerHitboxToggle', {
+    PlayerHitboxGroup:AddToggle({
+        enabled = true,
+        flag = 'PlayerHitboxToggle',
         Text = 'Player Hitbox Expander',
         Default = false,
         Tooltip = 'Expands other players hitboxes for blocking, tackling & etc',
@@ -5394,7 +5428,9 @@ end
 
     local AutoRushGroup = Tabs.Player:AddSection('Auto Rush')
 
-    AutoRushGroup:AddToggle('AutoFollowBallCarrier', {
+    AutoRushGroup:AddToggle({
+        enabled = true,
+        flag = 'AutoFollowBallCarrier',
         Text = 'Auto Follow Ball Carrier',
         Default = false,
         Tooltip = 'Automatically follows the ball carrier',
@@ -5440,7 +5476,9 @@ end
 
     local TeleportGroup = Tabs.Player:AddSection('Teleport')
 
-    TeleportGroup:AddToggle('TeleportForward', {
+    TeleportGroup:AddToggle({
+        enabled = true,
+        flag = 'TeleportForward',
         Text = 'Teleport Forward (Z)',
         Default = false,
         Tooltip = 'Teleports you forward 3 studs when pressing Z',
@@ -5476,7 +5514,9 @@ end
     local KickGroup = Tabs.Automatic:AddSection('Misc')
     local SackGroup = Tabs.Automatic:AddSection('Sacking')
 
-    KickGroup:AddToggle('KickAimbot', {
+    KickGroup:AddToggle({
+        enabled = true,
+        flag = 'KickAimbot',
         Text = 'Kick Aimbot (L)',
         Default = false,
         Tooltip = 'Max power & accuracy kick when pressing L',
@@ -5567,7 +5607,9 @@ if p == player then
 end
 end)
 
-AutoTouchdown:AddToggle('AutoTouchdown', {
+AutoTouchdown:AddToggle({
+    enabled = true,
+    flag = 'AutoTouchdown',
 Text = 'Auto Touchdown',
 Default = false,
 Tooltip = 'When you have the ball it will automatically touchdown for 6 points',
@@ -5695,7 +5737,9 @@ end
         end
     end)
     
-    SackGroup:AddToggle('AutoSack', {
+    SackGroup:AddToggle({
+        enabled = true,
+        flag = 'AutoSack',
         Text = 'Auto Sack',
         Default = false,
         Tooltip = 'Automatically Sacks The Enemy Quarterback',
@@ -5903,7 +5947,9 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-AutoCatch:AddToggle('AutoCatch', {
+AutoCatch:AddToggle({
+    enabled = true,
+    flag = 'AutoCatch',
     Text = 'Auto Catch',
     Default = false,
     Tooltip = 'In radius, it will automatically click',
@@ -5925,7 +5971,9 @@ AutoCatch:AddSlider('AutoCatchSlider', {
     end
 })
 
-    KickGroup:AddToggle('AntiAFK', {
+    KickGroup:AddToggle({
+        enabled = true,
+        flag = 'AntiAFK',
         Text = 'Anti-AFK',
         Default = false,
         Tooltip = 'Prevents you from being kicked for inactivity',
