@@ -1958,12 +1958,14 @@ end
             end)
 
             local oind
-            oind = hookmetamethod(game, '__index', function(self, key)
-                if magnetEnabled and not checkcaller() and key == 'CFrame' and self == hrp and prvnt then
-                    return og1
-                end
-                return oind(self, key)
-            end)
+            if hookmetamethod then
+                oind = hookmetamethod(game, '__index', function(self, key)
+                    if magnetEnabled and not checkcaller() and key == 'CFrame' and self == hrp and prvnt then
+                        return og1
+                    end
+                    return oind(self, key)
+                end)
+            end
 
             game:GetService('RunService').Heartbeat:Connect(function()
                 updateHitbox()
@@ -4472,12 +4474,14 @@ task.spawn(function()
 end)
 
 local oind
-oind = hookmetamethod(game, '__index', function(self, key)
-    if magnetEnabled and not checkcaller() and key == 'CFrame' and self == hrp and prvnt then
-        return og1
-    end
-    return oind(self, key)
-end)
+if hookmetamethod then
+    oind = hookmetamethod(game, '__index', function(self, key)
+        if magnetEnabled and not checkcaller() and key == 'CFrame' and self == hrp and prvnt then
+            return og1
+        end
+        return oind(self, key)
+    end)
+end
 
 game:GetService('RunService').Heartbeat:Connect(function()
     updateHitbox()
