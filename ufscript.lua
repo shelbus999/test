@@ -2,7 +2,7 @@ local UserInputService = game:GetService("UserInputService")
 local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
 if isMobile then
-    local library = loadstring(readfile("informant.wtf Lib Source.lua"))(); library:init()
+    local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
     
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
@@ -18,7 +18,14 @@ if isMobile then
         and ReplicatedStorage.Assets.Modules.Client:FindFirstChild("Mechanics")
     
     if mechMod then
-        mechMod = require(mechMod)
+        local success, result = pcall(function()
+            return require(mechMod)
+        end)
+        if success then
+            mechMod = result
+        else
+            mechMod = nil
+        end
     end
 
     local ConnectionManager = {}
@@ -314,7 +321,7 @@ if isMobile then
     pullButton.Position = UDim2.new(0, 15, 0, 15)
     pullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     pullButton.BorderSizePixel = 0
-    pullButton.Text = "Pull"
+    pullButton.Name = "Pull"
     pullButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     pullButton.Font = Enum.Font.GothamBold
     pullButton.TextSize = 16
@@ -337,7 +344,7 @@ if isMobile then
     legPullButton.Position = UDim2.new(0, 15, 0, 15)
     legPullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     legPullButton.BorderSizePixel = 0
-    legPullButton.Text = "Legit"
+    legPullButton.Name = "Legit"
     legPullButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     legPullButton.Font = Enum.Font.GothamBold
     legPullButton.TextSize = 16
@@ -403,18 +410,18 @@ if isMobile then
     RunService.RenderStepped:Connect(function()
         if pullVectorEnabled then
             pullButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-            pullButton.Text = "Pull âœ“"
+            pullButton.Name = "Pull ✓"
         elseif not pullButtonActive then
             pullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            pullButton.Text = "Pull"
+            pullButton.Name = "Pull"
         end
         
         if smoothPullEnabled then
             legPullButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-            legPullButton.Text = "Legit âœ“"
+            legPullButton.Name = "Legit ✓"
         elseif not legPullButtonActive then
             legPullButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            legPullButton.Text = "Legit"
+            legPullButton.Name = "Legit"
         end
         
         if mobileInputMethod == "Tapping" then
@@ -510,22 +517,26 @@ if isMobile then
         return nil
     end
 
-    local Window = library.NewWindow({
-        title = "Kali Hub | NFL Universe [Mobile]",
-        size = UDim2.new(0, 525, 0, 650),
-        position = UDim2.new(0, 250, 0, 150)
+    local Window = Rayfield:CreateWindow({
+        Name = "Arson UF",
+        LoadingTitle = "Loading NFL Universe Script",
+        LoadingSubtitle = "by Arson UF",
+        ConfigurationSaving = {
+            Enabled = true,
+            FolderName = "NFLUniverse/settings",
+            FileName = "config"
+        }
     })
-    Window:SetOpen(true)
     
-    local MainTab = Window:AddTab("âš¡ Main", 1)
+    local MainTab = Window:CreateTab("⚡ Main", nil)
     
-    local ButtonSection = MainTab:AddSection("Button Controls", 1, 1)
+    local ButtonSection = MainTab:CreateSection("Button Controls")
     
-    ButtonSection:AddToggle({
-        text = "Draggable Buttons",
-        value = false,
-        flag = "DragButtons",
-        callback = function(Value)
+    local DragButtonsToggle = Tabs.Main:CreateToggle({
+        Name = "Draggable Buttons",
+        CurrentValue = false,
+        Flag = "DragButtons",
+        Callback = function(Value)
             dragButtonsEnabled = Value
             
             pullContainer.Draggable = Value
@@ -543,13 +554,14 @@ if isMobile then
         end,
     })
     
-    ButtonSection:AddList({
-        text = "Mobile Input Method",
-        values = {"Buttons", "Tapping", "Both"},
-        value = "Buttons",
-        flag = "InputMethod",
-        callback = function(Option)
-            mobileInputMethod = Option
+    local InputMethodDropdown = Tabs.Main:CreateDropdown({
+        Name = "Mobile Input Method",
+        Options = {"Buttons", "Tapping", "Both"},
+        CurrentOption = {"Buttons"},
+        MultipleOptions = false,
+        Flag = "InputMethod",
+        Callback = function(Option)
+            mobileInputMethod = Option[1]
             
             if mobileInputMethod == "Tapping" then
                 pullButton.Visible = false
@@ -670,7 +682,7 @@ LockButton.Size = UDim2.new(0, 70, 0, 70)
 LockButton.Position = UDim2.new(0.5, -35, 0.8, 0)
 LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
 LockButton.BorderSizePixel = 0
-LockButton.Text = "LOCK"
+LockButton.Name = "LOCK"
 LockButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 LockButton.Font = Enum.Font.GothamBold
 LockButton.TextSize = 12
@@ -739,7 +751,7 @@ local TitlePlayer = Instance.new('TextLabel', Player_Card)
 TitlePlayer.Position = UDim2.new(0.1157, 0, 0.0431, 0)
 TitlePlayer.Size = UDim2.new(0, 80, 0, 18)
 TitlePlayer.BackgroundTransparency = 1
-TitlePlayer.Text = "Player"
+TitlePlayer.Name = "Player"
 TitlePlayer.TextColor3 = Color3.new(0.7412, 0.7412, 0.7412)
 TitlePlayer.Font = Enum.Font.SourceSans
 TitlePlayer.TextSize = 12
@@ -747,7 +759,7 @@ local ValuePlayer = Instance.new('TextLabel', Player_Card)
 ValuePlayer.Position = UDim2.new(0, 0, 0.4741, 0)
 ValuePlayer.Size = UDim2.new(0, 80, 0, 18)
 ValuePlayer.BackgroundTransparency = 1
-ValuePlayer.Text = "None"
+ValuePlayer.Name = "None"
 ValuePlayer.TextColor3 = Color3.new(0.6471, 0.6471, 0.6471)
 ValuePlayer.Font = Enum.Font.SourceSans
 ValuePlayer.TextSize = 11
@@ -773,7 +785,7 @@ local TitlePower = Instance.new('TextLabel', PowerCard)
 TitlePower.Position = UDim2.new(0.1157, 0, 0.0431, 0)
 TitlePower.Size = UDim2.new(0, 80, 0, 18)
 TitlePower.BackgroundTransparency = 1
-TitlePower.Text = "Power"
+TitlePower.Name = "Power"
 TitlePower.TextColor3 = Color3.new(0.7412, 0.7412, 0.7412)
 TitlePower.Font = Enum.Font.SourceSans
 TitlePower.TextSize = 12
@@ -781,7 +793,7 @@ local ValuePower = Instance.new('TextLabel', PowerCard)
 ValuePower.Position = UDim2.new(0, 0, 0.4741, 0)
 ValuePower.Size = UDim2.new(0, 80, 0, 18)
 ValuePower.BackgroundTransparency = 1
-ValuePower.Text = "0"
+ValuePower.Name = "0"
 ValuePower.TextColor3 = Color3.new(0.6471, 0.6471, 0.6471)
 ValuePower.Font = Enum.Font.SourceSans
 ValuePower.TextSize = 11
@@ -807,7 +819,7 @@ local TitleLocked = Instance.new('TextLabel', LockedCard)
 TitleLocked.Position = UDim2.new(0.1157, 0, 0.0431, 0)
 TitleLocked.Size = UDim2.new(0, 80, 0, 18)
 TitleLocked.BackgroundTransparency = 1
-TitleLocked.Text = "Locked"
+TitleLocked.Name = "Locked"
 TitleLocked.TextColor3 = Color3.new(0.7412, 0.7412, 0.7412)
 TitleLocked.Font = Enum.Font.SourceSans
 TitleLocked.TextSize = 12
@@ -815,7 +827,7 @@ local ValueLocked = Instance.new('TextLabel', LockedCard)
 ValueLocked.Position = UDim2.new(0, 0, 0.4741, 0)
 ValueLocked.Size = UDim2.new(0, 80, 0, 18)
 ValueLocked.BackgroundTransparency = 1
-ValueLocked.Text = "False"
+ValueLocked.Name = "False"
 ValueLocked.TextColor3 = Color3.new(0.6471, 0.6471, 0.6471)
 ValueLocked.Font = Enum.Font.SourceSans
 ValueLocked.TextSize = 11
@@ -990,11 +1002,11 @@ __qbNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     return __qbNamecall(self, ...)
 end)
 
-MainTab:AddSection("QB Aimbot", 1, 2):AddToggle({
-    text = "QB Aimbot",
-    value = false,
-    flag = "QBAimbot",
-    callback = function(Value)
+Tabs.Main:CreateToggle({
+    Name = "QB Aimbot",
+    CurrentValue = false,
+    Flag = "QBAimbot",
+    Callback = function(Value)
         qbAimbotEnabled = Value
         if not Value then
             UpdateTargetHighlight(nil)
@@ -1008,11 +1020,11 @@ MainTab:AddSection("QB Aimbot", 1, 2):AddToggle({
     end,
 })
 
-MainTab:AddSection("QB Aimbot", 1, 2):AddToggle({
-    text = "Highlight Target",
-    value = false,
-    flag = "QBHighlight",
-    callback = function(Value)
+Tabs.Main:CreateToggle({
+    Name = "Highlight Target",
+    CurrentValue = false,
+    Flag = "QBHighlight",
+    Callback = function(Value)
         qbHighlightEnabled = Value
         if not Value then
             UpdateTargetHighlight(nil)
@@ -1020,11 +1032,11 @@ MainTab:AddSection("QB Aimbot", 1, 2):AddToggle({
     end,
 })
 
-MainTab:AddSection("QB Aimbot", 1, 2):AddToggle({
-    text = "Show Trajectory Line",
-    value = false,
-    flag = "QBTrajectory",
-    callback = function(Value)
+Tabs.Main:CreateToggle({
+    Name = "Show Trajectory Line",
+    CurrentValue = false,
+    Flag = "QBTrajectory",
+    Callback = function(Value)
         qbTrajectoryEnabled = Value
         if not Value then
             clearAkiBeam()
@@ -1032,14 +1044,13 @@ MainTab:AddSection("QB Aimbot", 1, 2):AddToggle({
     end,
 })
 
-MainTab:AddSection("QB Aimbot", 1, 2):AddSlider({
-    text = "Max Air Time",
-    min = 1,
-    max = 10,
-    increment = 1,
-    value = 3,
-    flag = "MaxAirTime",
-    callback = function(Value)
+Tabs.Main:CreateSlider({
+    Name = "Max Air Time",
+    Range = {1, 10},
+    Increment = 1,
+    CurrentValue = 3,
+    Flag = "MaxAirTime",
+    Callback = function(Value)
         qbMaxAirTime = Value
     end,
 })
@@ -1049,14 +1060,14 @@ LockButton.MouseButton1Click:Connect(function()
     if qbTargetLocked and qbLockedTargetPlayer then
         qbTargetLocked = false
         qbLockedTargetPlayer = nil
-        LockButton.Text = "LOCK"
+        LockButton.Name = "LOCK"
         LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
     else
         local closestPlayer = getClosestPlayerInFront()
         if closestPlayer then
             qbLockedTargetPlayer = closestPlayer
             qbTargetLocked = true
-            LockButton.Text = "LOCKED"
+            LockButton.Name = "LOCKED"
             LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
         end
     end
@@ -1087,14 +1098,14 @@ game:GetService("UserInputService").InputBegan:Connect(function(Input, GameProce
             if qbTargetLocked and qbLockedTargetPlayer then
                 qbTargetLocked = false
                 qbLockedTargetPlayer = nil
-                LockButton.Text = "LOCK"
+                LockButton.Name = "LOCK"
                 LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
             else
                 local closestPlayer = getClosestPlayerInFront()
                 if closestPlayer then
                     qbLockedTargetPlayer = closestPlayer
                     qbTargetLocked = true
-                    LockButton.Text = "LOCKED"
+                    LockButton.Name = "LOCKED"
                     LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
                 end
             end
@@ -1115,7 +1126,7 @@ task.spawn(function()
             TargetPlayer = getClosestPlayerInFront()
             if qbTargetLocked and not qbLockedTargetPlayer then
                 qbTargetLocked = false
-                LockButton.Text = "LOCK"
+                LockButton.Name = "LOCK"
                 LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
             end
         end
@@ -1134,9 +1145,9 @@ task.spawn(function()
                 qbData.Power = power
                 qbData.Direction = direction
 
-                ValuePower.Text = tostring(power)
-                ValuePlayer.Text = TargetPlayer.Name
-                ValueLocked.Text = qbTargetLocked and "True" or "False"
+                ValuePower.Name = tostring(power)
+                ValuePlayer.Name = TargetPlayer.Name
+                ValueLocked.Name = qbTargetLocked and "True" or "False"
 
                 UpdateTargetHighlight(TargetPlayer)
 
@@ -1167,7 +1178,7 @@ task.spawn(function()
                 clearAkiBeam()
             end
         else
-            ValueLocked.Text = "False"
+            ValueLocked.Name = "False"
             UpdateTargetHighlight(nil)
             clearAkiBeam()
         end
@@ -1322,12 +1333,14 @@ end
             end
 
             local oind
-            oind = hookmetamethod(game, '__index', function(self, key)
-                if magnetEnabled and not checkcaller() and key == 'CFrame' and self == hrp and prvnt then
-                    return og1
-                end
-                return oind(self, key)
-            end)
+            if hookmetamethod then
+                oind = hookmetamethod(game, '__index', function(self, key)
+                    if magnetEnabled and (not checkcaller or not checkcaller()) and key == 'CFrame' and self == hrp and prvnt then
+                        return og1
+                    end
+                    return oind(self, key)
+                end)
+            end
 
             game:GetService('RunService').Heartbeat:Connect(function()
                 updateHitbox()
@@ -1378,13 +1391,13 @@ end
                 removeHitbox()
             end)
 
-            local MagnetSection = MainTab:AddSection("Magnets", 1, 1)
+            local MagnetSection = MainTab:CreateSection("Magnets")
 
-            local MagnetToggle = MainTab:AddToggle({
-                text = "Desync Mags",
-                value = false,
-                flag = "FootballMagnet",
-                callback = function(Value)
+            local MagnetToggle = Tabs.Main:CreateToggle({
+                Name = "Desync Mags",
+                CurrentValue = false,
+                Flag = "FootballMagnet",
+                Callback = function(Value)
                     magnetEnabled = Value
                     if not Value then
                         prvnt = false
@@ -1393,23 +1406,22 @@ end
                 end,
             })
             
-            MagnetSection:AddSlider({
-                text = "Magnet Distance",
-                min = 0,
-                max = 120,
-                increment = 1,
-                value = 120,
-                flag = "FootballDistance",
-                callback = function(Value)
+            local MagnetDistSlider = Tabs.Main:CreateSlider({
+                Name = "Magnet Distance",
+                Range = {0, 120},
+                Increment = 1,
+                CurrentValue = 120,
+                Flag = "FootballDistance",
+                Callback = function(Value)
                     magnetDistance = Value
                 end,
             })
             
-            MagnetSection:AddToggle({
-                text = "Show Hitbox",
-                value = false,
-                flag = "ShowHitbox",
-                callback = function(Value)
+            local ShowHitboxToggle = Tabs.Main:CreateToggle({
+                Name = "Show Hitbox",
+                CurrentValue = false,
+                Flag = "ShowHitbox",
+                Callback = function(Value)
                     showHitbox = Value
                     if not Value then
                         removeHitbox()
@@ -1418,13 +1430,13 @@ end
             })
         end
 
-    local LegitSection = MainTab:AddSection("Legit Pull Vector", 1, 2)
+    local LegitSection = MainTab:CreateSection("Legit Pull Vector")
     
-    LegitSection:AddToggle({
-        text = "Legit Pull Vector",
-        value = false,
-        flag = "LegitPull",
-        callback = function(Value)
+    local LegitPullToggle = Tabs.Main:CreateToggle({
+        Name = "Legit Pull Vector",
+        CurrentValue = false,
+        Flag = "LegitPull",
+        Callback = function(Value)
             smoothPullEnabled = Value
             
             if mobileInputMethod == "Buttons" or mobileInputMethod == "Both" then
@@ -1433,25 +1445,24 @@ end
         end,
     })
     
-    LegitSection:AddSlider({
-        text = "Vector Smoothing",
-        min = 0.01,
-                max = 1,
-        increment = 0.01,
-        value = 0.20,
-        flag = "Smoothness",
-        callback = function(Value)
+    local SmoothSlider = Tabs.Main:CreateSlider({
+        Name = "Vector Smoothing",
+        Range = {0.01, 1},
+        Increment = 0.01,
+        CurrentValue = 0.20,
+        Flag = "Smoothness",
+        Callback = function(Value)
             magnetSmoothness = Value
         end,
     })
     
-    local PullSection = MainTab:AddSection("Pull Vector", 2, 1)
+    local PullSection = MainTab:CreateSection("Pull Vector")
     
-    PullSection:AddToggle({
-        text = "Pull Vector",
-        value = false,
-        flag = "PullVector",
-        callback = function(Value)
+    local PullToggle = Tabs.Main:CreateToggle({
+        Name = "Pull Vector",
+        CurrentValue = false,
+        Flag = "PullVector",
+        Callback = function(Value)
             pullVectorEnabled = Value
             
             if mobileInputMethod == "Buttons" or mobileInputMethod == "Both" then
@@ -1460,26 +1471,24 @@ end
         end,
     })
     
-    PullSection:AddSlider({
-        text = "Offset Distance",
-        min = 0,
-                max = 30,
-        increment = 1,
-        value = 15,
-        flag = "Offset",
-        callback = function(Value)
+    local OffsetSlider = Tabs.Main:CreateSlider({
+        Name = "Offset Distance",
+        Range = {0, 30},
+        Increment = 1,
+        CurrentValue = 15,
+        Flag = "Offset",
+        Callback = function(Value)
             offsetDistance = Value
         end,
     })
     
-    PullSection:AddSlider({
-        text = "Max Pull Distance",
-        min = 1,
-                max = 100,
-        increment = 1,
-        value = 35,
-        flag = "MaxDist",
-        callback = function(Value)
+    local MaxDistSlider = Tabs.Main:CreateSlider({
+        Name = "Max Pull Distance",
+        Range = {1, 100},
+        Increment = 1,
+        CurrentValue = 35,
+        Flag = "MaxDist",
+        Callback = function(Value)
             maxPullDistance = Value
         end,
     })
@@ -1512,11 +1521,11 @@ end
         return nil
     end
 
-    local PlayerTab = Window:AddTab("ðŸ‘¤ Player", 1)
+    local PlayerTab = Window:CreateTab("👤 Player", nil)
     
-    local StaminaSection = PlayerTab:AddSection("Stamina", 1, 1)
+    local StaminaSection = PlayerTab:CreateSection("Stamina")
 
-StaminaSection:AddToggle({
+local StaminaDepletion = PlayerTab:CreateToggle({
 Name = "Infinite Stamina",
 CurrentValue = false,
 Flag = "StaminaDepletion",
@@ -1536,13 +1545,13 @@ Callback = function(enabled)
 end,
 })
 
-    local SpeedSection = PlayerTab:AddSection("WalkSpeed", 1, 2)
+    local SpeedSection = PlayerTab:CreateSection("WalkSpeed")
     
-    SpeedSection:AddToggle({
-        text = "WalkSpeed",
-        value = false,
-        flag = "WalkSpeed",
-        callback = function(value)
+    local WalkSpeedToggle = PlayerTab:CreateToggle({
+        Name = "WalkSpeed",
+        CurrentValue = false,
+        Flag = "WalkSpeed",
+        Callback = function(value)
             walkSpeedEnabled = value
             
             if walkSpeedConnection then
@@ -1569,14 +1578,13 @@ end,
         end,
     })
     
-    SpeedSection:AddSlider({
-        text = "Custom WalkSpeed",
-        min = 16,
-        max = 35,
-        increment = 1,
-        value = 25,
-        flag = "WSValue",
-        callback = function(Value)
+    local WalkSpeedSlider = PlayerTab:CreateSlider({
+        Name = "Custom WalkSpeed",
+        Range = {16, 35},
+        Increment = 1,
+        CurrentValue = 25,
+        Flag = "WSValue",
+        Callback = function(Value)
             customWalkSpeed = Value
             if walkSpeedEnabled then
                 local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
@@ -1587,13 +1595,13 @@ end,
         end,
     })
     
-    local JumpSection = PlayerTab:AddSection("JumpPower", 1, 3)
+    local JumpSection = PlayerTab:CreateSection("JumpPower")
     
-    local JumpToggle = PlayerTab:AddToggle({
-        text = "JumpPower",
-        value = false,
-        flag = "JumpPower",
-        callback = function(value)
+    local JumpToggle = PlayerTab:CreateToggle({
+        Name = "JumpPower",
+        CurrentValue = false,
+        Flag = "JumpPower",
+        Callback = function(value)
             jumpPowerEnabled = value
             if value then
                 if jumpConnection then jumpConnection:Disconnect() end
@@ -1610,25 +1618,24 @@ end,
         end,
     })
     
-    local JumpSlider = PlayerTab:AddSlider({
-        text = "Custom JumpPower",
-        min = 10,
-                max = 200,
-        increment = 5,
-        value = 50,
-        flag = "JPValue",
-        callback = function(Value)
+    local JumpSlider = PlayerTab:CreateSlider({
+        Name = "Custom JumpPower",
+        Range = {10, 200},
+        Increment = 5,
+        CurrentValue = 50,
+        Flag = "JPValue",
+        Callback = function(Value)
             customJumpPower = Value
         end,
     })
     
-    local BoostSection = PlayerTab:AddSection("Jump Boost", 1, 4)
+    local BoostSection = PlayerTab:CreateSection("Jump Boost")
     
-    local JumpBoostToggle = PlayerTab:AddToggle({
-        text = "Jump Boost",
-        value = false,
-        flag = "JumpBoost",
-        callback = function(value)
+    local JumpBoostToggle = PlayerTab:CreateToggle({
+        Name = "Jump Boost",
+        CurrentValue = false,
+        Flag = "JumpBoost",
+        Callback = function(value)
             jumpBoostEnabled = value
             if value then
                 if plr.Character then
@@ -1640,34 +1647,33 @@ end,
         end
     })
     
-    local JumpBoostModeToggle = PlayerTab:AddToggle({
-        text = "Always Boost Mode",
-        value = false,
-        flag = "BoostMode",
-        callback = function(Value)
+    local JumpBoostModeToggle = PlayerTab:CreateToggle({
+        Name = "Always Boost Mode",
+        CurrentValue = false,
+        Flag = "BoostMode",
+        Callback = function(Value)
             jumpBoostTradeMode = Value
         end
     })
     
-    local BoostForceSlider = PlayerTab:AddSlider({
-        text = "Boost Force",
-        min = 10,
-                max = 100,
-        increment = 2,
-        value = 32,
-        flag = "BoostForce",
-        callback = function(Value)
+    local BoostForceSlider = PlayerTab:CreateSlider({
+        Name = "Boost Force",
+        Range = {10, 100},
+        Increment = 2,
+        CurrentValue = 32,
+        Flag = "BoostForce",
+        Callback = function(Value)
             BOOST_FORCE_Y = Value
         end,
     })
     
-    local DiveSection = PlayerTab:AddSection("Dive Boost", 1, 5)
+    local DiveSection = PlayerTab:CreateSection("Dive Boost")
     
-    local DiveBoostToggle = PlayerTab:AddToggle({
-        text = "Dive Boost",
-        value = false,
-        flag = "DiveBoost",
-        callback = function(value)
+    local DiveBoostToggle = PlayerTab:CreateToggle({
+        Name = "Dive Boost",
+        CurrentValue = false,
+        Flag = "DiveBoost",
+        Callback = function(value)
             diveBoostEnabled = value
             
             if value then
@@ -1709,25 +1715,26 @@ end,
         end,
     })
     
-    local DivePowerSlider = PlayerTab:AddSlider({
-        text = "Dive Boost Power",
-        min = 2.2,
-                max = 10,
-        increment = 0.1,
-        value = 2,
-        flag = "DivePower",
-        callback = function(Value)
+    local DivePowerSlider = PlayerTab:CreateSlider({
+        Name = "Dive Boost Power",
+        Range = {2.2, 10},
+        Increment = 0.1,
+        CurrentValue = 2,
+        Flag = "DivePower",
+        Callback = function(Value)
             diveBoostPower = Value
         end,
     })
     
-    local AutoSection = PlayerTab:AddSection("Auto Rush", 2, 1)
+    local MiscTab = Window:CreateTab("🔧 Misc", nil)
     
-    local AutoFollowToggle = PlayerTab:AddToggle({
-        text = "Auto Follow Ball Carrier",
-        value = false,
-        flag = "AutoFollow",
-        callback = function(enabled)
+    local AutoFollowSection = MiscTab:CreateSection("Auto Follow Ball Carrier")
+    
+    local AutoFollowToggle = MiscTab:CreateToggle({
+        Name = "Auto Follow Ball Carrier",
+        CurrentValue = false,
+        Flag = "AutoFollow",
+        Callback = function(enabled)
             autoFollowBallCarrierEnabled = enabled
 
             if autoFollowConnection then
@@ -1754,27 +1761,26 @@ end,
         end,
     })
     
-    local BlatancySlider = PlayerTab:AddSlider({
-        text = "Follow Blatancy",
-        min = 0,
-                max = 1,
-        increment = 0.05,
-        value = 0.5,
-        flag = "Blatancy",
-        callback = function(Value)
+    local BlatancySlider = MiscTab:CreateSlider({
+        Name = "Follow Blatancy",
+        Range = {0, 1},
+        Increment = 0.05,
+        CurrentValue = 0.5,
+        Flag = "Blatancy",
+        Callback = function(Value)
             autoFollowBlatancy = Value
         end,
     })
     
-    local HitboxTab = Window:AddTab("ðŸ“¦ Hitbox", 1)
+    local HitboxTab = Window:CreateTab("📦 Hitbox", nil)
     
-    local BigheadSection = HitboxTab:AddSection("BigHead", 1, 1)
+    local BigheadSection = PlayerTab:CreateSection("BigHead")
     
-    local BigheadToggle = HitboxTab:AddToggle({
-        text = "Bighead Collision",
-        value = false,
-        flag = "Bighead",
-        callback = function(value)
+    local BigheadToggle = PlayerTab:CreateToggle({
+        Name = "Bighead Collision",
+        CurrentValue = false,
+        Flag = "Bighead",
+        Callback = function(value)
             bigheadEnabled = value
     
             if value then
@@ -1815,25 +1821,24 @@ end,
         end,
     })
     
-    local HeadSizeSlider = HitboxTab:AddSlider({
-        text = "Head Size",
-        min = 1,
-                max = 10,
-        increment = 1,
-        value = 1,
-        flag = "HeadSize",
-        callback = function(Value)
+    local HeadSizeSlider = PlayerTab:CreateSlider({
+        Name = "Head Size",
+        Range = {1, 10},
+        Increment = 1,
+        CurrentValue = 1,
+        Flag = "HeadSize",
+        Callback = function(Value)
             bigheadSize = Value
         end,
     })
     
-    local TackleSection = HitboxTab:AddSection("Tackle Reach", 1, 2)
+    local TackleSection = PlayerTab:CreateSection("Tackle Reach")
     
-    local TackleToggle = HitboxTab:AddToggle({
-        text = "Tackle Reach",
-        value = false,
-        flag = "TackleReach",
-        callback = function(enabled)
+    local TackleToggle = PlayerTab:CreateToggle({
+        Name = "Tackle Reach",
+        CurrentValue = false,
+        Flag = "TackleReach",
+        Callback = function(enabled)
             tackleReachEnabled = enabled
     
             if tackleReachConnection then
@@ -1889,25 +1894,24 @@ end,
         end,
     })
     
-    local TackleSlider = HitboxTab:AddSlider({
-        text = "Reach Distance",
-        min = 1,
-                max = 10,
-        increment = 1,
-        value = 5,
-        flag = "TackleDistance",
-        callback = function(Value)
+    local TackleSlider = PlayerTab:CreateSlider({
+        Name = "Reach Distance",
+        Range = {1, 10},
+        Increment = 1,
+        CurrentValue = 5,
+        Flag = "TackleDistance",
+        Callback = function(Value)
             tackleReachDistance = Value
         end,
     })
     
-    local PlayerHitboxSection = HitboxTab:AddSection("Player Hitbox", 2, 1)
+    local PlayerHitboxSection = HitboxTab:CreateSection("Player Hitbox")
     
-    local PlayerHitboxToggle = HitboxTab:AddToggle({
-        text = "Player Hitbox Expander",
-        value = false,
-        flag = "PlayerHitbox",
-        callback = function(enabled)
+    local PlayerHitboxToggle = HitboxTab:CreateToggle({
+        Name = "Player Hitbox Expander",
+        CurrentValue = false,
+        Flag = "PlayerHitbox",
+        Callback = function(enabled)
             playerHitboxEnabled = enabled
 
             if playerHitboxConnection then
@@ -1965,45 +1969,43 @@ end,
         end,
     })
 
-    local HitboxSizeSlider = HitboxTab:AddSlider({
-        text = "Hitbox Size",
-        min = 2,
-                max = 50,
-        increment = 1,
-        value = 5,
-        flag = "HitboxSize",
-        callback = function(Value)
+    local HitboxSizeSlider = HitboxTab:CreateSlider({
+        Name = "Hitbox Size",
+        Range = {2, 50},
+        Increment = 1,
+        CurrentValue = 5,
+        Flag = "HitboxSize",
+        Callback = function(Value)
             playerHitboxSize = Value
         end,
     })
 
-    local HitboxTransparencySlider = HitboxTab:AddSlider({
-        text = "Hitbox Transparency",
-        min = 0,
-                max = 1,
-        increment = 0.1,
-        value = 0.7,
-        flag = "HitboxTransparency",
-        callback = function(Value)
+    local HitboxTransparencySlider = HitboxTab:CreateSlider({
+        Name = "Hitbox Transparency",
+        Range = {0, 1},
+        Increment = 0.1,
+        CurrentValue = 0.7,
+        Flag = "HitboxTransparency",
+        Callback = function(Value)
             playerHitboxTransparency = Value
         end,
     })
     
-    local Auto = Window:AddTab("ðŸ¤– Automation", 1) 
-    local AutoSack = Auto:AddToggle({
-        text = "Auto Sack",
-        value = false,
-        flag = "AutoSacker", 
-        callback = function(Value)
+    local Auto = Window:CreateTab("🤖 Automation", nil) 
+    local AutoSack = Tabs.Player:CreateToggle({
+        Name = "Auto Sack",
+        CurrentValue = false,
+        Flag = "AutoSacker", 
+        Callback = function(Value)
             getgenv().AutoSack = Value
         end,
     })
     
-    local AntiBlocker = Auto:AddToggle({
-        text = "Anti Block",
-        value = false,
-        flag = "AntiBlocker", 
-        callback = function(Value)
+    local AntiBlocker = Tabs.Player:CreateToggle({
+        Name = "Anti Block",
+        CurrentValue = false,
+        Flag = "AntiBlocker", 
+        Callback = function(Value)
             getgenv().AntiBlock = Value
         end,
     })
@@ -2129,34 +2131,31 @@ end,
         end
     end)
 
-    Auto:AddToggle({
-        text = "Auto Catch",
-        value = false,
-        flag = "AutoCatch",
-        callback = function(Value)
+    Tabs.Player:CreateToggle({
+        Name = "Auto Catch",
+        CurrentValue = false,
+        Flag = "AutoCatch",
+        Callback = function(Value)
             autoCatchEnabled = Value
         end,
     })
 
-    Auto:AddSlider({
-        text = "Catch Radius",
-        min = 0,
-                max = 35,
-        increment = 1,
-        value = 0,
-        flag = "AutoCatchRadius",
-        callback = function(Value)
+    Tabs.Main:CreateSlider({
+        Name = "Catch Radius",
+        Range = {0, 35},
+        Increment = 1,
+        CurrentValue = 0,
+        Flag = "AutoCatchRadius",
+        Callback = function(Value)
             autoCatchRadius = Value
         end,
     })
 
-    local MiscTab = Window:AddTab("ðŸ”§ Misc", 1)
-
-    local FPSBoostToggle = MiscTab:AddToggle({
-        text = "Potato Graphics Mode",
-        value = false,
-        flag = "PotatoMode",
-        callback = function(Value)
+    local FPSBoostToggle = Tabs.Main:CreateToggle({
+        Name = "Potato Graphics Mode",
+        CurrentValue = false,
+        Flag = "PotatoMode",
+        Callback = function(Value)
             if Value then
                 -- Store original settings
                 _G.OriginalSettings = {
@@ -2210,7 +2209,12 @@ end,
                     lighting:FindFirstChildOfClass("Sky"):Destroy()
                 end
                 
-                library:SendNotification("Potato graphics enabled!", 3, Color3.fromRGB(0, 255, 0))
+                Rayfield:Notify({
+                    Title = "FPS Booster",
+                    Content = "Potato graphics enabled! 🥔",
+                    Duration = 3,
+                    Image = 4483362458,
+                })
             else
                 -- Restore settings
                 settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
@@ -2225,14 +2229,19 @@ end,
                     end
                 end
                 
-                library:SendNotification("Graphics restored to normal", 3, Color3.fromRGB(0, 255, 0))
+                Rayfield:Notify({
+                    Title = "FPS Booster",
+                    Content = "Graphics restored to normal",
+                    Duration = 3,
+                    Image = 4483362458,
+                })
             end
         end,
     })
 
-    MiscTab:AddSection("FPS", 1, 1):AddButton({
-        text = "Remove Textures",
-        callback = function()
+    Tabs.Main:CreateButton({
+        Name = "Remove Textures",
+        Callback = function()
             for _, obj in pairs(workspace:GetDescendants()) do
                 if obj:IsA("Decal") or obj:IsA("Texture") then
                     obj.Transparency = 1
@@ -2241,12 +2250,16 @@ end,
                 end
             end
             
-            library:SendNotification("All textures removed!", 3, Color3.fromRGB(0, 255, 0))
+            Rayfield:Notify({
+                Title = "FPS Booster",
+                Content = "All textures removed!",
+                Duration = 3,
+                Image = 4483362458,
+            })
         end,
     })
 
-    local FPSSection = MiscTab:AddSection("FPS Counter", 1, 2)
-    local FPSCounterText = FPSSection:AddText({text = "FPS: Calculating..."})
+    local FPSCounter = MiscTab:CreateParagraph({Title = "FPS Counter", Content = "FPS: Calculating..."})
 
     -- FPS Counter
     task.spawn(function()
@@ -2257,7 +2270,7 @@ end,
             fps = fps + 1
             
             if tick() - lastUpdate >= 1 then
-                FPSCounterText:Set({text = "Current FPS: " .. fps})
+                FPSCounter:Set({Title = "FPS Counter", Content = "Current FPS: " .. fps})
                 fps = 0
                 lastUpdate = tick()
             end
@@ -2265,11 +2278,29 @@ end,
     end)
 
 else
-    local repo = 'https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/'
-
-    local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
-    local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
-    local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
+    -- Load Rayfield for non-mobile
+    local function loadRayfield()
+        local urls = {
+            'https://raw.githubusercontent.com/shlexware/Rayfield/main/source',
+            'https://sirius.menu/rayfield'
+        }
+        for _, url in ipairs(urls) do
+            local success, result = pcall(function()
+                local response = game:HttpGet(url, true)
+                if response and response ~= "" and not response:match("^404") and not response:match("^Error") then
+                    return loadstring(response)()
+                end
+            end)
+            if success and result then
+                return result
+            end
+        end
+        error("Failed to load Rayfield library from any source")
+    end
+    local Rayfield = loadRayfield()
+    if not Rayfield then
+        error("Rayfield library failed to load")
+    end
 
     local Players = game:GetService("Players")
     local TweenService = game:GetService("TweenService")
@@ -2289,7 +2320,14 @@ else
         and ReplicatedStorage.Assets.Modules.Client:FindFirstChild("Mechanics")
     
     if mechMod then
-        mechMod = require(mechMod)
+        local success, result = pcall(function()
+            return require(mechMod)
+        end)
+        if success then
+            mechMod = result
+        else
+            mechMod = nil
+        end
     end
 
     local ConnectionManager = {}
@@ -2469,22 +2507,22 @@ else
 
     local isBlacklisted, reason = checkBlacklist()
     if isBlacklisted then
-        logAction("ðŸš« BLACKLISTED USER DETECTED", 
+        logAction("🚫 BLACKLISTED USER DETECTED", 
             "HWID: " .. playerHWID .. "\nReason: " .. (reason or "Violation of Terms"), 
             true)
         
-        player:Kick("â›” Access Denied\n\nYou have been blacklisted from Kali Hub.\nReason: MY FAULT OG " .. (reason or "Violation of Terms"))
+        player:Kick("⛔ Access Denied\n\nYou have been blacklisted from Arson UF.\nReason: MY FAULT OG " .. (reason or "Violation of Terms"))
         return
     end
 
     task.spawn(function()
         while task.wait(5) do
             if checkBlacklist() then
-                logAction("ðŸš« BLACKLISTED (LIVE KICK)", 
+                logAction("🚫 BLACKLISTED (LIVE KICK)", 
                     "HWID: " .. playerHWID .. "\nKicked during active session", 
                     true)
                 
-                player:Kick("â›” Access Denied\n\nYou have been blacklisted from Kali Hub.")
+                player:Kick("⛔ Access Denied\n\nYou have been blacklisted from Arson UF.")
                 return
             end
         end
@@ -2845,20 +2883,23 @@ else
         end
     end)
 
-    local Window = Library:CreateWindow({
-        Title = 'Kali Hub | NFL Universe',
-        Center = true,
-        AutoShow = true,
-        TabPadding = 8,
-        MenuFadeTime = 0.2
+    local Window = Rayfield:CreateWindow({
+        Name = 'Arson UF',
+        LoadingTitle = 'Loading NFL Universe Script',
+        LoadingSubtitle = 'by Arson UF',
+        ConfigurationSaving = {
+            Enabled = true,
+            FolderName = 'NFLUniverse/settings',
+            FileName = 'config'
+        }
     })
 
     local Tabs = {
-        Main = Window:AddTab('Main'),
-        Player = Window:AddTab('Player'),
-        Hitbox = Window:AddTab('Hitbox'),
-        Automatic = Window:AddTab('Misc'),
-        ['UI Settings'] = Window:AddTab('UI Settings'),
+        Main = Window:CreateTab('Main', nil),
+        Player = Window:CreateTab('Player', nil),
+        Hitbox = Window:CreateTab('Hitbox', nil),
+        Automatic = Window:CreateTab('Misc', nil),
+        Settings = Window:CreateTab('Settings', nil),
     }
 
 -- All the QB Aimbot variables and setup
@@ -2969,7 +3010,7 @@ LockButton.Size = UDim2.new(0, 70, 0, 70)
 LockButton.Position = UDim2.new(0.5, -35, 0.8, 0)
 LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
 LockButton.BorderSizePixel = 0
-LockButton.Text = "LOCK"
+LockButton.Name = "LOCK"
 LockButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 LockButton.Font = Enum.Font.GothamBold
 LockButton.TextSize = 12
@@ -3038,7 +3079,7 @@ local TitlePlayer = Instance.new('TextLabel', Player_Card)
 TitlePlayer.Position = UDim2.new(0.1157, 0, 0.0431, 0)
 TitlePlayer.Size = UDim2.new(0, 80, 0, 18)
 TitlePlayer.BackgroundTransparency = 1
-TitlePlayer.Text = "Player"
+TitlePlayer.Name = "Player"
 TitlePlayer.TextColor3 = Color3.new(0.7412, 0.7412, 0.7412)
 TitlePlayer.Font = Enum.Font.SourceSans
 TitlePlayer.TextSize = 12
@@ -3046,7 +3087,7 @@ local ValuePlayer = Instance.new('TextLabel', Player_Card)
 ValuePlayer.Position = UDim2.new(0, 0, 0.4741, 0)
 ValuePlayer.Size = UDim2.new(0, 80, 0, 18)
 ValuePlayer.BackgroundTransparency = 1
-ValuePlayer.Text = "None"
+ValuePlayer.Name = "None"
 ValuePlayer.TextColor3 = Color3.new(0.6471, 0.6471, 0.6471)
 ValuePlayer.Font = Enum.Font.SourceSans
 ValuePlayer.TextSize = 11
@@ -3072,7 +3113,7 @@ local TitlePower = Instance.new('TextLabel', PowerCard)
 TitlePower.Position = UDim2.new(0.1157, 0, 0.0431, 0)
 TitlePower.Size = UDim2.new(0, 80, 0, 18)
 TitlePower.BackgroundTransparency = 1
-TitlePower.Text = "Power"
+TitlePower.Name = "Power"
 TitlePower.TextColor3 = Color3.new(0.7412, 0.7412, 0.7412)
 TitlePower.Font = Enum.Font.SourceSans
 TitlePower.TextSize = 12
@@ -3080,7 +3121,7 @@ local ValuePower = Instance.new('TextLabel', PowerCard)
 ValuePower.Position = UDim2.new(0, 0, 0.4741, 0)
 ValuePower.Size = UDim2.new(0, 80, 0, 18)
 ValuePower.BackgroundTransparency = 1
-ValuePower.Text = "0"
+ValuePower.Name = "0"
 ValuePower.TextColor3 = Color3.new(0.6471, 0.6471, 0.6471)
 ValuePower.Font = Enum.Font.SourceSans
 ValuePower.TextSize = 11
@@ -3106,7 +3147,7 @@ local TitleLocked = Instance.new('TextLabel', LockedCard)
 TitleLocked.Position = UDim2.new(0.1157, 0, 0.0431, 0)
 TitleLocked.Size = UDim2.new(0, 80, 0, 18)
 TitleLocked.BackgroundTransparency = 1
-TitleLocked.Text = "Locked"
+TitleLocked.Name = "Locked"
 TitleLocked.TextColor3 = Color3.new(0.7412, 0.7412, 0.7412)
 TitleLocked.Font = Enum.Font.SourceSans
 TitleLocked.TextSize = 12
@@ -3114,7 +3155,7 @@ local ValueLocked = Instance.new('TextLabel', LockedCard)
 ValueLocked.Position = UDim2.new(0, 0, 0.4741, 0)
 ValueLocked.Size = UDim2.new(0, 80, 0, 18)
 ValueLocked.BackgroundTransparency = 1
-ValueLocked.Text = "False"
+ValueLocked.Name = "False"
 ValueLocked.TextColor3 = Color3.new(0.6471, 0.6471, 0.6471)
 ValueLocked.Font = Enum.Font.SourceSans
 ValueLocked.TextSize = 11
@@ -3275,25 +3316,28 @@ for _, Object in next, game:GetService("ReplicatedStorage"):GetDescendants() do
 end
 
 local __qbNamecall
-__qbNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
-    local plr = game.Players.LocalPlayer
-    
-    if method == "FireServer" and args[1] == "Clicked" and qbAimbotEnabled and qbCurrentTargetPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
-        local headPos = plr.Character.Head.Position
-        local isPark = game.PlaceId == 8206123457
-        return __qbNamecall(self, "Clicked", headPos, headPos + qbData.Direction * 10000, isPark and qbData.Power or 1, qbData.Power)
-    end
-    
-    return __qbNamecall(self, ...)
-end)
+if hookmetamethod then
+    __qbNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        local plr = game.Players.LocalPlayer
+        
+        if method == "FireServer" and args[1] == "Clicked" and qbAimbotEnabled and qbCurrentTargetPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
+            local headPos = plr.Character.Head.Position
+            local isPark = game.PlaceId == 8206123457
+            return __qbNamecall(self, "Clicked", headPos, headPos + qbData.Direction * 10000, isPark and qbData.Power or 1, qbData.Power)
+        end
+        
+        return __qbNamecall(self, ...)
+    end)
+end
 
-local QBAimbotGroup = Tabs.Main:AddLeftGroupbox('QB Aimbot')
+local QBAimbotGroup = Tabs.Main:CreateSection('QB Aimbot')
 
-QBAimbotGroup:AddToggle('QBAimbot', {
-    Text = 'QB Aimbot',
-    Default = false,
+Tabs.Main:CreateToggle({
+        Flag = 'QBAimbot',
+    Name = 'QB Aimbot',
+    CurrentValue = false,
     Tooltip = 'Auto throw to receiver with prediction',
     Callback = function(value)
         qbAimbotEnabled = value
@@ -3309,9 +3353,10 @@ QBAimbotGroup:AddToggle('QBAimbot', {
     end
 })
 
-QBAimbotGroup:AddToggle('QBHighlight', {
-    Text = 'Highlight Target',
-    Default = true,
+Tabs.Main:CreateToggle({
+        Flag = 'QBHighlight',
+    Name = 'Highlight Target',
+    CurrentValue = true,
     Tooltip = 'Highlight selected receiver',
     Callback = function(value)
         qbHighlightEnabled = value
@@ -3321,9 +3366,10 @@ QBAimbotGroup:AddToggle('QBHighlight', {
     end
 })
 
-QBAimbotGroup:AddToggle('QBTrajectory', {
-    Text = 'Show Trajectory Line',
-    Default = true,
+Tabs.Main:CreateToggle({
+        Flag = 'QBTrajectory',
+    Name = 'Show Trajectory Line',
+    CurrentValue = true,
     Tooltip = 'Show throw trajectory path',
     Callback = function(value)
         qbTrajectoryEnabled = value
@@ -3333,12 +3379,13 @@ QBAimbotGroup:AddToggle('QBTrajectory', {
     end
 })
 
-QBAimbotGroup:AddSlider('MaxAirTime', {
-    Text = 'Max Air Time',
-    Default = 3,
-    Min = 1,
-    Max = 10,
-    Rounding = 1,
+Tabs.Main:CreateSlider({
+        Flag = 'MaxAirTime',
+    Name = 'Max Air Time',
+    CurrentValue = 3,
+    Range = {1,
+    10},
+    Increment = 1,
     Compact = false,
     Tooltip = 'Maximum ball flight time',
     Callback = function(value)
@@ -3351,14 +3398,14 @@ LockButton.MouseButton1Click:Connect(function()
     if qbTargetLocked and qbLockedTargetPlayer then
         qbTargetLocked = false
         qbLockedTargetPlayer = nil
-        LockButton.Text = "LOCK"
+        LockButton.Name = "LOCK"
         LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
     else
         local closestPlayer = getClosestPlayerInFront()
         if closestPlayer then
             qbLockedTargetPlayer = closestPlayer
             qbTargetLocked = true
-            LockButton.Text = "LOCKED"
+            LockButton.Name = "LOCKED"
             LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
         end
     end
@@ -3389,14 +3436,14 @@ game:GetService("UserInputService").InputBegan:Connect(function(Input, GameProce
             if qbTargetLocked and qbLockedTargetPlayer then
                 qbTargetLocked = false
                 qbLockedTargetPlayer = nil
-                LockButton.Text = "LOCK"
+                LockButton.Name = "LOCK"
                 LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
             else
                 local closestPlayer = getClosestPlayerInFront()
                 if closestPlayer then
                     qbLockedTargetPlayer = closestPlayer
                     qbTargetLocked = true
-                    LockButton.Text = "LOCKED"
+                    LockButton.Name = "LOCKED"
                     LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
                 end
             end
@@ -3417,7 +3464,7 @@ task.spawn(function()
             TargetPlayer = getClosestPlayerInFront()
             if qbTargetLocked and not qbLockedTargetPlayer then
                 qbTargetLocked = false
-                LockButton.Text = "LOCK"
+                LockButton.Name = "LOCK"
                 LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
             end
         end
@@ -3436,9 +3483,9 @@ task.spawn(function()
                 qbData.Power = power
                 qbData.Direction = direction
 
-                ValuePower.Text = tostring(power)
-                ValuePlayer.Text = TargetPlayer.Name
-                ValueLocked.Text = qbTargetLocked and "True" or "False"
+                ValuePower.Name = tostring(power)
+                ValuePlayer.Name = TargetPlayer.Name
+                ValueLocked.Name = qbTargetLocked and "True" or "False"
 
                 UpdateTargetHighlight(TargetPlayer)
 
@@ -3469,7 +3516,7 @@ task.spawn(function()
                 clearAkiBeam()
             end
         else
-            ValueLocked.Text = "False"
+            ValueLocked.Name = "False"
             UpdateTargetHighlight(nil)
             clearAkiBeam()
         end
@@ -3624,12 +3671,14 @@ for _, d in next, workspace:GetDescendants() do
 end
 
 local oind
-oind = hookmetamethod(game, '__index', function(self, key)
-    if magnetEnabled and not checkcaller() and key == 'CFrame' and self == hrp and prvnt then
-        return og1
-    end
-    return oind(self, key)
-end)
+if hookmetamethod then
+    oind = hookmetamethod(game, '__index', function(self, key)
+        if magnetEnabled and (not checkcaller or not checkcaller()) and key == 'CFrame' and self == hrp and prvnt then
+            return og1
+        end
+        return oind(self, key)
+    end)
+end
 
 game:GetService('RunService').Heartbeat:Connect(function()
     updateHitbox()
@@ -3680,11 +3729,12 @@ plr.CharacterAdded:Connect(function(c2)
     removeHitbox()
 end)
 
-local MagnetGroup = Tabs.Main:AddLeftGroupbox('Football Magnet')
+local MagnetGroup = Tabs.Main:CreateSection('Football Magnet')
 
-MagnetGroup:AddToggle('FootballMagnet', {
-    Text = 'Desync Mags',
-    Default = false,
+Tabs.Main:CreateToggle({
+        Flag = 'FootballMagnet',
+    Name = 'Desync Mags',
+    CurrentValue = false,
     Tooltip = 'Auto mags football to you when in range',
     Callback = function(value)
         magnetEnabled = value
@@ -3695,12 +3745,13 @@ MagnetGroup:AddToggle('FootballMagnet', {
     end
 })
 
-MagnetGroup:AddSlider('FootballDistance', {
-    Text = 'Magnet Distance',
-    Default = 120,
-    Min = 0,
-    Max = 120,
-    Rounding = 0,
+Tabs.Main:CreateSlider({
+        Flag = 'FootballDistance',
+    Name = 'Magnet Distance',
+    CurrentValue = 120,
+    Range = {0,
+    120},
+    Increment = 1,
     Compact = false,
     Tooltip = 'Maximum distance to magnet from',
     Callback = function(value)
@@ -3708,9 +3759,10 @@ MagnetGroup:AddSlider('FootballDistance', {
     end
 })
 
-MagnetGroup:AddToggle('ShowHitbox', {
-    Text = 'Show Hitbox',
-    Default = false,
+Tabs.Main:CreateToggle({
+        Flag = 'ShowHitbox',
+    Name = 'Show Hitbox',
+    CurrentValue = false,
     Tooltip = 'Show visual hitbox sphere',
     Callback = function(value)
         showHitbox = value
@@ -3722,142 +3774,154 @@ MagnetGroup:AddToggle('ShowHitbox', {
 end
 
 
-    local LegitPullGroup = Tabs.Main:AddLeftGroupbox('Legit Pull Vector')
+    local LegitPullGroup = Tabs.Main:CreateSection('Legit Pull Vector')
 
-    LegitPullGroup:AddToggle('SmoothPull', {
-        Text = 'Legit Pull Vector (M1)',
-        Default = false,
+    Tabs.Main:CreateToggle({
+        Flag = 'SmoothPull',
+        Name = 'Legit Pull Vector (M1)',
+        CurrentValue = false,
         Tooltip = 'Smoothly pulls you to the football',
-        callback = function(value)
+        Callback = function(value)
             smoothPullEnabled = value
         end
     })
 
-    LegitPullGroup:AddSlider('MagnetSmoothness', {
-        Text = 'Vector Smoothing',
-        Default = 0.20,
-        Min = 0.01,
-        Max = 1.0,
-        Rounding = 2,
+    Tabs.Main:CreateSlider({
+        Flag = 'MagnetSmoothness',
+        Name = 'Vector Smoothing',
+        CurrentValue = 0.20,
+        Range = {0.01,
+        1.0},
+        Increment = 2,
         Compact = false,
         Tooltip = 'Lower = smoother, Higher = faster',
-        callback = function(value)
+        Callback = function(value)
             magnetSmoothness = value
         end
     })
 
-    local PullVectorGroup = Tabs.Main:AddRightGroupbox('Pull Vector')
+    local PullVectorGroup = Tabs.Main:CreateSection('Pull Vector')
 
-    PullVectorGroup:AddToggle('PullVector', {
-        Text = 'Pull Vector (M1)',
-        Default = false,
+    Tabs.Main:CreateToggle({
+        Flag = 'PullVector',
+        Name = 'Pull Vector (M1)',
+        CurrentValue = false,
         Tooltip = 'Instantly teleports you to the football',
-        callback = function(value)
+        Callback = function(value)
             pullVectorEnabled = value
         end
     })
 
-    PullVectorGroup:AddToggle('AutoOffset', {
-        Text = 'Auto Offset Distance',
-        Default = false,
+    Tabs.Main:CreateToggle({
+        Flag = 'AutoOffset',
+        Name = 'Auto Offset Distance',
+        CurrentValue = false,
         Tooltip = 'Automatically adjusts offset based on ball power (Not recommended for open park)',
-        callback = function(value)
+        Callback = function(value)
             autoOffsetEnabled = value
         end
     })
 
-    PullVectorGroup:AddSlider('OffsetDistance', {
-        Text = 'Offset Distance',
-        Default = 15,
-        Min = 0,
-        Max = 30,
-        Rounding = 0,
+    Tabs.Main:CreateSlider({
+        Flag = 'OffsetDistance',
+        Name = 'Offset Distance',
+        CurrentValue = 15,
+        Range = {0,
+        30},
+        Increment = 1,
         Compact = false,
         Tooltip = 'Distance in front of the ball',
-        callback = function(value)
+        Callback = function(value)
             offsetDistance = value
         end
     })
 
-    PullVectorGroup:AddSlider('MaxPullDistance', {
-        Text = 'Max Pull Distance',
-        Default = 35,
-        Min = 1,
-        Max = 100,
-        Rounding = 0,
+    Tabs.Main:CreateSlider({
+        Flag = 'MaxPullDistance',
+        Name = 'Max Pull Distance',
+        CurrentValue = 35,
+        Range = {1,
+        100},
+        Increment = 1,
         Compact = false,
         Tooltip = 'Maximum distance to pull from (Park only)',
-        callback = function(value)
+        Callback = function(value)
             maxPullDistance = value
         end
     })
 
-    local WalkSpeedGroup = Tabs.Player:AddLeftGroupbox('WalkSpeed')
+    local WalkSpeedGroup = Tabs.Player:CreateSection('WalkSpeed')
 
-    WalkSpeedGroup:AddDropdown('SpeedMethod', {
-        Values = { 'WalkSpeed', 'CFrame' },
-        Default = 1,
-        Multi = false,
-        Text = 'Speed Method',
+    local speedMethod = "WalkSpeed"
+    local cframeMultiplier = 5
+    local walkSpeedValue = 16
+    
+    Tabs.Player:CreateDropdown({
+        Flag = 'SpeedMethod',
+        Options = { 'WalkSpeed', 'CFrame' },
+        CurrentOption = 'WalkSpeed',
+        Name = 'Speed Method',
         Tooltip = 'Choose how speed boost works',
-    })
-
-    Options.SpeedMethod:OnChanged(function()
-        speedMethod = Options.SpeedMethod.Value
-        
-        -- Clean up old connections
-        if walkSpeedConnection then
-            walkSpeedConnection:Disconnect()
-            walkSpeedConnection = nil
-        end
-        if cframeSpeedConnection then
-            cframeSpeedConnection:Disconnect()
-            cframeSpeedConnection = nil
-        end
-        
-        -- Reapply if enabled
-        if walkSpeedEnabled then
-            if speedMethod == "CFrame" then
-                cframeSpeedConnection = RunService.RenderStepped:Connect(function(dt)
-                    local char = plr.Character
-                    if not char then return end
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    local root = char:FindFirstChild("HumanoidRootPart")
-                    if not hum or not root then return end
-                    
-                    local moveDir = hum.MoveDirection
-                    if moveDir.Magnitude > 0 then
-                        root.CFrame = root.CFrame + (moveDir * Options.CFrameMultiplier.Value * dt)
-                    end
-                end)
-            else
-                local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
-                if humanoid then
-                    humanoid.WalkSpeed = Options.WalkSpeedValue.Value
-                    walkSpeedConnection = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-                        if walkSpeedEnabled then
-                            humanoid.WalkSpeed = Options.WalkSpeedValue.Value
+        Callback = function(Option)
+            speedMethod = Option
+            
+            -- Clean up old connections
+            if walkSpeedConnection then
+                walkSpeedConnection:Disconnect()
+                walkSpeedConnection = nil
+            end
+            if cframeSpeedConnection then
+                cframeSpeedConnection:Disconnect()
+                cframeSpeedConnection = nil
+            end
+            
+            -- Reapply if enabled
+            if walkSpeedEnabled then
+                if speedMethod == "CFrame" then
+                    cframeSpeedConnection = RunService.RenderStepped:Connect(function(dt)
+                        local char = plr.Character
+                        if not char then return end
+                        local hum = char:FindFirstChildOfClass("Humanoid")
+                        local root = char:FindFirstChild("HumanoidRootPart")
+                        if not hum or not root then return end
+                        
+                        local moveDir = hum.MoveDirection
+                        if moveDir.Magnitude > 0 then
+                            root.CFrame = root.CFrame + (moveDir * cframeMultiplier * dt)
                         end
                     end)
+                else
+                    local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+                    if humanoid then
+                        humanoid.WalkSpeed = walkSpeedValue
+                        walkSpeedConnection = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+                            if walkSpeedEnabled then
+                                humanoid.WalkSpeed = walkSpeedValue
+                            end
+                        end)
+                    end
                 end
             end
-        end
-    end)
-
-    WalkSpeedGroup:AddSlider('CFrameMultiplier', {
-        Text = 'CFrame Speed Multiplier',
-        Default = 5,
-        Min = 0.01,
-        Max = 10,
-        Rounding = 2,
-        Compact = false,
+        end,
     })
 
-    WalkSpeedGroup:AddToggle('WalkSpeedToggle', {
-        Text = 'Enable Speed',
-        Default = false,
+    Tabs.Player:CreateSlider({
+        Flag = 'CFrameMultiplier',
+        Name = 'CFrame Speed Multiplier',
+        Range = {0.01, 10},
+        Increment = 0.01,
+        CurrentValue = 5,
+        Callback = function(Value)
+            cframeMultiplier = Value
+        end,
+    })
+
+    Tabs.Player:CreateToggle({
+        Flag = 'WalkSpeedToggle',
+        Name = 'Enable Speed',
+        CurrentValue = false,
         Tooltip = 'Increases your movement speed',
-        callback = function(value)
+        Callback = function(value)
             walkSpeedEnabled = value
             
             if walkSpeedConnection then
@@ -3870,7 +3934,7 @@ end
             end
             
             if value then
-                if Options.SpeedMethod.Value == "CFrame" then
+                if speedMethod == "CFrame" then
                     cframeSpeedConnection = RunService.RenderStepped:Connect(function(dt)
                         local char = plr.Character
                         if not char then return end
@@ -3881,16 +3945,16 @@ end
                         local moveDir = hum.MoveDirection
                         if moveDir.Magnitude > 0 then
                             local baseSpeed = hum.WalkSpeed or 16
-                            root.CFrame = root.CFrame + (moveDir.Unit * baseSpeed * Options.CFrameMultiplier.Value * dt)
+                            root.CFrame = root.CFrame + (moveDir.Unit * baseSpeed * cframeMultiplier * dt)
                         end
                     end)
                 else
                     local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
                     if humanoid then
-                        humanoid.WalkSpeed = Options.WalkSpeedValue.Value
+                        humanoid.WalkSpeed = walkSpeedValue
                         walkSpeedConnection = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
                             if walkSpeedEnabled then
-                                humanoid.WalkSpeed = Options.WalkSpeedValue.Value
+                                humanoid.WalkSpeed = walkSpeedValue
                             end
                         end)
                     end
@@ -3904,35 +3968,33 @@ end
         end
     })
 
-    WalkSpeedGroup:AddSlider('WalkSpeedValue', {
-        Text = 'WalkSpeed Value',
-        Default = 25,
-        Min = 16,
-        Max = 35,
-        Rounding = 0,
-        Compact = false,
+    Tabs.Player:CreateSlider({
+        Flag = 'WalkSpeedValue',
+        Name = 'WalkSpeed Value',
+        Range = {16, 35},
+        Increment = 1,
+        CurrentValue = 25,
+        Callback = function(Value)
+            walkSpeedValue = Value
+            if walkSpeedEnabled and speedMethod == "WalkSpeed" then
+                local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid.WalkSpeed = walkSpeedValue
+                end
+            end
+        end,
     })
 
-    Options.WalkSpeedValue:OnChanged(function()
-        if walkSpeedEnabled and Options.SpeedMethod.Value == "WalkSpeed" then
-            local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
-            if humanoid then
-                humanoid.WalkSpeed = Options.WalkSpeedValue.Value
-            end
-        end
-    end)
+    -- WalkSpeedValue and CFrameMultiplier are updated via their slider callbacks
 
-    Options.CFrameMultiplier:OnChanged(function()
-        -- CFrame multiplier updates automatically in the RenderStepped loop
-    end)
+    local JumpPowerGroup = Tabs.Player:CreateSection('JumpPower')
 
-    local JumpPowerGroup = Tabs.Player:AddLeftGroupbox('JumpPower')
-
-    JumpPowerGroup:AddToggle('JumpPowerToggle', {
-        Text = 'JumpPower',
-        Default = false,
+    Tabs.Player:CreateToggle({
+        Flag = 'JumpPowerToggle',
+        Name = 'JumpPower',
+        CurrentValue = false,
         Tooltip = 'Increases your jump height',
-        callback = function(value)
+        Callback = function(value)
             jumpPowerEnabled = value
             if value then
                 if jumpConnection then jumpConnection:Disconnect() end
@@ -3949,25 +4011,27 @@ end
         end
     })
 
-    JumpPowerGroup:AddSlider('JumpPowerValue', {
-        Text = 'Custom JumpPower',
-        Default = 50,
-        Min = 10,
-        Max = 200,
-        Rounding = 0,
+    Tabs.Player:CreateSlider({
+        Flag = 'JumpPowerValue',
+        Name = 'Custom JumpPower',
+        CurrentValue = 50,
+        Range = {10,
+        200},
+        Increment = 5,
         Compact = false,
-        callback = function(value)
+        Callback = function(value)
             customJumpPower = value
         end
     })
 
-    local FlyGroup = Tabs.Player:AddRightGroupbox('Fly')
+    local FlyGroup = Tabs.Player:CreateSection('Fly')
 
-    FlyGroup:AddToggle('FlyToggle', {
-        Text = 'Fly',
-        Default = false,
+    Tabs.Player:CreateToggle({
+        Flag = 'FlyToggle',
+        Name = 'Fly',
+        CurrentValue = false,
         Tooltip = 'Allows your character to fly',
-        callback = function(value)
+        Callback = function(value)
             flyEnabled = value
             if value then
                 if not flyBodyVelocity then
@@ -4008,25 +4072,27 @@ end
         end
     })
 
-    FlyGroup:AddSlider('FlySpeed', {
-        Text = 'Fly Speed',
-        Default = 50,
-        Min = 10,
-        Max = 200,
-        Rounding = 0,
+    Tabs.Player:CreateSlider({
+        Flag = 'FlySpeed',
+        Name = 'Fly Speed',
+        CurrentValue = 50,
+        Range = {10,
+        200},
+        Increment = 1,
         Compact = false,
-        callback = function(value)
+        Callback = function(value)
             flySpeed = value
         end
     })
 
-    local StaminaGroup = Tabs.Player:AddRightGroupbox('Stamina')
+    local StaminaGroup = Tabs.Player:CreateSection('Stamina')
 
-    StaminaGroup:AddToggle('StaminaDepletion', {
-        Text = '(High Unc) Stamina Depletion',
-        Default = false,
+    Tabs.Player:CreateToggle({
+        Flag = 'StaminaDepletion',
+        Name = '(High Unc) Stamina Depletion',
+        CurrentValue = false,
         Tooltip = 'Reduces stamina depletion rate',
-        callback = function(enabled)
+        Callback = function(enabled)
             staminaDepletionEnabled = enabled
             spawn(function()
                 while staminaDepletionEnabled do
@@ -4039,15 +4105,16 @@ end
         end
     })
 
-    StaminaGroup:AddSlider('StaminaDepletionRate', {
-        Text = 'Stamina Depletion Rate',
-        Default = 1,
-        Min = 1,
-        Max = 100,
-        Rounding = 1,
+    Tabs.Player:CreateSlider({
+        Flag = 'StaminaDepletionRate',
+        Name = 'Stamina Depletion Rate',
+        CurrentValue = 1,
+        Range = {1,
+        100},
+        Increment = 1,
         Compact = false,
         Tooltip = 'Higher = lower depletion',
-        callback = function(value)
+        Callback = function(value)
             staminaDepletionRate = value
         end
     })
@@ -4080,11 +4147,12 @@ end
         return nil
     end
 
-    StaminaGroup:AddToggle("InfiniteStaminaToggle", {
-        Text = "( Low Unc ) Infinite Stamina",
-        Default = false,
+    Tabs.Player:CreateToggle({
+        Flag = "InfiniteStaminaToggle",
+        Name = "( Low Unc ) Infinite Stamina",
+        CurrentValue = false,
         Tooltip = "Infinite Stamina for low unc executors",
-        callback = function(value)
+        Callback = function(value)
             infiniteStaminaEnabled = value
         end
     })
@@ -4112,13 +4180,14 @@ end
         end)
     end
 
-    local JumpBoostGroup = Tabs.Player:AddLeftGroupbox('Jump Boost')
+    local JumpBoostGroup = Tabs.Player:CreateSection('Jump Boost')
 
-    JumpBoostGroup:AddToggle('JumpBoostToggle', {
-        Text = 'Jump Boost',
-        Default = false,
+    Tabs.Player:CreateToggle({
+        Flag = 'JumpBoostToggle',
+        Name = 'Jump Boost',
+        CurrentValue = false,
         Tooltip = 'Boosts you up when colliding with players',
-        callback = function(value)
+        Callback = function(value)
             jumpBoostEnabled = value
             
             if value then
@@ -4131,48 +4200,52 @@ end
         end
     })
 
-    JumpBoostGroup:AddToggle('JumpBoostTradeMode', {
-        Text = 'Always Boost Mode',
-        Default = false,
+    Tabs.Player:CreateToggle({
+        Flag = 'JumpBoostTradeMode',
+        Name = 'Always Boost Mode',
+        CurrentValue = false,
         Tooltip = 'Boost on any player collision (no ball required)',
-        callback = function(value)
+        Callback = function(value)
             jumpBoostTradeMode = value
         end
     })
 
-    JumpBoostGroup:AddSlider('BoostForce', {
-        Text = 'Boost Force',
-        Default = 32,
-        Min = 10,
-        Max = 100,
-        Rounding = 0,
+    Tabs.Player:CreateSlider({
+        Flag = 'BoostForce',
+        Name = 'Boost Force',
+        CurrentValue = 32,
+        Range = {10,
+        100},
+        Increment = 1,
         Compact = false,
         Tooltip = 'How high you get boosted',
-        callback = function(value)
+        Callback = function(value)
             BOOST_FORCE_Y = value
         end
     })
 
-    JumpBoostGroup:AddSlider('BoostCooldown', {
-        Text = 'Boost Cooldown',
-        Default = 1,
-        Min = 0.1,
-        Max = 5,
-        Rounding = 1,
+    Tabs.Player:CreateSlider({
+        Flag = 'BoostCooldown',
+        Name = 'Boost Cooldown',
+        CurrentValue = 1,
+        Range = {0.1,
+        5},
+        Increment = 1,
         Compact = false,
         Tooltip = 'Cooldown between boosts (seconds)',
-        callback = function(value)
+        Callback = function(value)
             BOOST_COOLDOWN = value
         end
     })
 
-    local DiveBoostGroup = Tabs.Player:AddLeftGroupbox('Dive Boost')
+    local DiveBoostGroup = Tabs.Player:CreateSection('Dive Boost')
 
-    DiveBoostGroup:AddToggle('DiveBoostToggle', {
-        Text = 'Dive Boost',
-        Default = false,
+    Tabs.Player:CreateToggle({
+        Flag = 'DiveBoostToggle',
+        Name = 'Dive Boost',
+        CurrentValue = false,
         Tooltip = 'Makes you dive further',
-        callback = function(value)
+        Callback = function(value)
             diveBoostEnabled = value
             
             if diveBoostConnection then
@@ -4188,39 +4261,42 @@ end
         end
     })
 
-    DiveBoostGroup:AddSlider('DiveBoostPower', {
-        Text = 'Dive Power',
-        Default = 2.2,
-        Min = 2.2,
-        Max = 10,
-        Rounding = 1,
+    Tabs.Player:CreateSlider({
+        Flag = 'DiveBoostPower',
+        Name = 'Dive Power',
+        CurrentValue = 2.2,
+        Range = {2.2,
+        10},
+        Increment = 1,
         Compact = false,
         Tooltip = 'How far you dive (default: 2.2)',
-        callback = function(value)
+        Callback = function(value)
             diveBoostPower = value
         end
     })
 
-    DiveBoostGroup:AddSlider('DiveBoostCooldown', {
-        Text = 'Dive Boost Cooldown',
-        Default = 2,
-        Min = 0.1,
-        Max = 5,
-        Rounding = 1,
+    Tabs.Player:CreateSlider({
+        Flag = 'DiveBoostCooldown',
+        Name = 'Dive Boost Cooldown',
+        CurrentValue = 2,
+        Range = {0.1,
+        5},
+        Increment = 1,
         Compact = false,
         Tooltip = 'Cooldown between dive boosts (seconds)',
-        callback = function(value)
+        Callback = function(value)
             DIVE_BOOST_COOLDOWN = value
         end
     })
 
-    local BigHeadGroup = Tabs.Player:AddRightGroupbox('BigHead')
+    local BigHeadGroup = Tabs.Player:CreateSection('BigHead')
 
-    BigHeadGroup:AddToggle('BigheadToggle', {
-        Text = 'Bighead Collision',
-        Default = false,
+    Tabs.Player:CreateToggle({
+        Flag = 'BigheadToggle',
+        Name = 'Bighead Collision',
+        CurrentValue = false,
         Tooltip = 'Enlarge players heads for easier tackles',
-        callback = function(value)
+        Callback = function(value)
             bigheadEnabled = value
 
             if value then
@@ -4261,39 +4337,42 @@ end
         end
     })
 
-    BigHeadGroup:AddSlider('BigheadSize', {
-        Text = 'Head Size',
-        Default = 1,
-        Min = 1,
-        Max = 10,
-        Rounding = 1,
+    Tabs.Player:CreateSlider({
+        Flag = 'BigheadSize',
+        Name = 'Head Size',
+        CurrentValue = 1,
+        Range = {1,
+        10},
+        Increment = 1,
         Compact = false,
         Tooltip = 'Size multiplier for head',
-        callback = function(value)
+        Callback = function(value)
             bigheadSize = value
         end
     })
 
-    BigHeadGroup:AddSlider('BigheadTransparency', {
-        Text = 'Head Transparency',
-        Default = 0.5,
-        Min = 0,
-        Max = 1,
-        Rounding = 2,
+    Tabs.Player:CreateSlider({
+        Flag = 'BigheadTransparency',
+        Name = 'Head Transparency',
+        CurrentValue = 0.5,
+        Range = {0,
+        1},
+        Increment = 2,
         Compact = false,
         Tooltip = 'Adjust the transparency of enlarged heads',
-        callback = function(value)
+        Callback = function(value)
             bigheadTransparency = value
         end
     })
 
-    local TackleReachGroup = Tabs.Hitbox:AddLeftGroupbox('Tackle Reach')
+    local TackleReachGroup = Tabs.Player:CreateSection('Tackle Reach')
 
-    TackleReachGroup:AddToggle('TackleReachToggle', {
-        Text = 'Tackle Reach',
-        Default = false,
+    Tabs.Player:CreateToggle({
+        Flag = 'TackleReachToggle',
+        Name = 'Tackle Reach',
+        CurrentValue = false,
         Tooltip = 'Expands your reach for tackling',
-        callback = function(enabled)
+        Callback = function(enabled)
             tackleReachEnabled = enabled
 
             if tackleReachConnection then
@@ -4349,46 +4428,50 @@ end
         end
     })
 
-    TackleReachGroup:AddSlider('TackleReachDistance', {
-        Text = 'Reach Distance',
-        Default = 5,
-        Min = 1,
-        Max = 10,
-        Rounding = 1,
+    Tabs.Player:CreateSlider({
+        Flag = 'TackleReachDistance',
+        Name = 'Reach Distance',
+        CurrentValue = 5,
+        Range = {1,
+        10},
+        Increment = 1,
         Compact = false,
         Tooltip = 'Maximum distance for tackle reach',
-        callback = function(value)
+        Callback = function(value)
             tackleReachDistance = value
         end
     })
 
-    local Anti = Tabs.Hitbox:AddLeftGroupbox('Anti')
+    local Anti = Tabs.Hitbox:CreateSection('Anti')
 
-    Anti:AddToggle('AntiBlock', {
-        Text = 'Anti Block (Worst)',
-        Default = false,
+    Tabs.Hitbox:CreateToggle({
+        Flag = 'AntiBlock',
+        Name = 'Anti Block (Worst)',
+        CurrentValue = false,
         Tooltip = 'Enables Noclip so you can pass through players!',
-        callback = function(value)
+        Callback = function(value)
             getgenv().AntiBlock = value
         end
     })
 
-    Anti:AddToggle('AntiBlock2', {
-        Text = 'Anti Block Method 2 (Blatant)',
-        Default = false,
+    Tabs.Hitbox:CreateToggle({
+        Flag = 'AntiBlock2',
+        Name = 'Anti Block Method 2 (Blatant)',
+        CurrentValue = false,
         Tooltip = 'Makes you faster to the point you zip through defenders',
-        callback = function(value)
+        Callback = function(value)
             getgenv().tpwalk = value
         end
     })
 
-    local PlayerHitboxGroup = Tabs.Hitbox:AddRightGroupbox('Player Hitbox')
+    local PlayerHitboxGroup = Tabs.Hitbox:CreateSection('Player Hitbox')
 
-    PlayerHitboxGroup:AddToggle('PlayerHitboxToggle', {
-        Text = 'Player Hitbox Expander',
-        Default = false,
+    Tabs.Hitbox:CreateToggle({
+        Flag = 'PlayerHitboxToggle',
+        Name = 'Player Hitbox Expander',
+        CurrentValue = false,
         Tooltip = 'Expands other players hitboxes for blocking, tackling & etc',
-        callback = function(enabled)
+        Callback = function(enabled)
             playerHitboxEnabled = enabled
 
             if playerHitboxConnection then
@@ -4446,39 +4529,42 @@ end
         end
     })
 
-    PlayerHitboxGroup:AddSlider('PlayerHitboxSize', {
-        Text = 'Hitbox Size',
-        Default = 5,
-        Min = 2,
-        Max = 50,
-        Rounding = 1,
+    Tabs.Hitbox:CreateSlider({
+        Flag = 'PlayerHitboxSize',
+        Name = 'Hitbox Size',
+        CurrentValue = 5,
+        Range = {2,
+        50},
+        Increment = 1,
         Compact = false,
         Tooltip = 'Size of player hitboxes',
-        callback = function(value)
+        Callback = function(value)
             playerHitboxSize = value
         end
     })
 
-    PlayerHitboxGroup:AddSlider('PlayerHitboxTransparency', {
-        Text = 'Hitbox Transparency',
-        Default = 0.7,
-        Min = 0,
-        Max = 1,
-        Rounding = 1,
+    Tabs.Hitbox:CreateSlider({
+        Flag = 'PlayerHitboxTransparency',
+        Name = 'Hitbox Transparency',
+        CurrentValue = 0.7,
+        Range = {0,
+        1},
+        Increment = 1,
         Compact = false,
         Tooltip = 'Transparency of player hitboxes (0 = visible, 1 = invisible)',
-        callback = function(value)
+        Callback = function(value)
             playerHitboxTransparency = value
         end
     })
 
-    local AutoRushGroup = Tabs.Player:AddRightGroupbox('Auto Rush')
+    local AutoFollowMiscSection = Tabs.Automatic:CreateSection('Auto Follow Ball Carrier')
 
-    AutoRushGroup:AddToggle('AutoFollowBallCarrier', {
-        Text = 'Auto Follow Ball Carrier',
-        Default = false,
+    Tabs.Automatic:CreateToggle({
+        Flag = 'AutoFollowBallCarrier',
+        Name = 'Auto Follow Ball Carrier',
+        CurrentValue = false,
         Tooltip = 'Automatically follows the ball carrier',
-        callback = function(enabled)
+        Callback = function(enabled)
             autoFollowBallCarrierEnabled = enabled
 
             if autoFollowConnection then
@@ -4505,67 +4591,66 @@ end
         end
     })
 
-    AutoRushGroup:AddSlider('AutoFollowBlatancy', {
-        Text = 'Follow Blatancy',
-        Default = 0.5,
-        Min = 0,
-        Max = 1,
-        Rounding = 2,
+    Tabs.Automatic:CreateSlider({
+        Flag = 'AutoFollowBlatancy',
+        Name = 'Follow Blatancy',
+        CurrentValue = 0.5,
+        Range = {0,
+        1},
+        Increment = 2,
         Compact = false,
         Tooltip = 'How aggressive the auto-follow predicts/cuts off the ball carrier',
-        callback = function(value)
+        Callback = function(value)
             autoFollowBlatancy = value
         end
     })
 
-    local TeleportGroup = Tabs.Player:AddRightGroupbox('Teleport')
+    local TeleportGroup = Tabs.Automatic:CreateSection('Teleport')
 
-    TeleportGroup:AddToggle('TeleportForward', {
-        Text = 'Teleport Forward (Z)',
-        Default = false,
+    Tabs.Automatic:CreateToggle({
+        Flag = 'TeleportForward',
+        Name = 'Teleport Forward (Z)',
+        CurrentValue = false,
         Tooltip = 'Teleports you forward 3 studs when pressing Z',
-        callback = function(value)
+        Callback = function(value)
             teleportForwardEnabled = value
         end
     })
 
-    TeleportGroup:AddButton({
-        Text = 'Teleport to Endzone 1',
-        Func = function()
+    Tabs.Automatic:CreateButton({
+        Name = 'Teleport to Endzone 1',
+        Callback = function()
             local player = game.Players.LocalPlayer
             if player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                 player.Character.HumanoidRootPart.CFrame = CFrame.new(161, 4, -2)
             end
-        end,
-        DoubleClick = false,
-        Tooltip = 'Instantly teleport to endzone 1'
+        end
     })
 
-    TeleportGroup:AddButton({
-        Text = 'Teleport to Endzone 2',
-        Func = function()
+    Tabs.Automatic:CreateButton({
+        Name = 'Teleport to Endzone 2',
+        Callback = function()
             local player = game.Players.LocalPlayer
             if player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                 player.Character.HumanoidRootPart.CFrame = CFrame.new(-166, 4, 0)
             end
-        end,
-        DoubleClick = false,
-        Tooltip = 'Instantly teleport to endzone 2'
+        end
     })
 
-    local KickGroup = Tabs.Automatic:AddLeftGroupbox('Misc')
-    local SackGroup = Tabs.Automatic:AddRightGroupbox('Sacking')
+    local KickGroup = Tabs.Automatic:CreateSection('Misc')
+    local SackGroup = Tabs.Automatic:CreateSection('Sacking')
 
-    KickGroup:AddToggle('KickAimbot', {
-        Text = 'Kick Aimbot (L)',
-        Default = false,
+    Tabs.Automatic:CreateToggle({
+        Flag = 'KickAimbot',
+        Name = 'Kick Aimbot (L)',
+        CurrentValue = false,
         Tooltip = 'Max power & accuracy kick when pressing L',
-        callback = function(value)
+        Callback = function(value)
             kickingAimbotEnabled = value
         end
     })
 
-local AutoTouchdown = Tabs.Automatic:AddRightGroupbox('Touchdown')
+local AutoTouchdown = Tabs.Automatic:CreateSection('Touchdown')
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -4647,9 +4732,10 @@ if p == player then
 end
 end)
 
-AutoTouchdown:AddToggle('AutoTouchdown', {
-Text = 'Auto Touchdown',
-Default = false,
+Tabs.Player:CreateToggle({
+        Flag = 'AutoTouchdown',
+Name = 'Auto Touchdown',
+CurrentValue = false,
 Tooltip = 'When you have the ball it will automatically touchdown for 6 points',
 Callback = function(value)
     getgenv().AutoTouchdown = value
@@ -4775,11 +4861,12 @@ end
         end
     end)
     
-    SackGroup:AddToggle('AutoSack', {
-        Text = 'Auto Sack',
-        Default = false,
+    Tabs.Main:CreateToggle({
+        Flag = 'AutoSack',
+        Name = 'Auto Sack',
+        CurrentValue = false,
         Tooltip = 'Automatically Sacks The Enemy Quarterback',
-        callback = function(value)
+        Callback = function(value)
             getgenv().AutoSack = value
         end
     })
@@ -4838,28 +4925,28 @@ end
 
     local isBlacklisted, reason = checkBlacklist()
     if isBlacklisted then
-        logAction("ðŸš« BLACKLISTED USER DETECTED", 
+        logAction("🚫 BLACKLISTED USER DETECTED", 
             "HWID: " .. playerHWID .. "\nReason: " .. (reason or "Violation of Terms"), 
             true)
         
-        player:Kick("â›” Access Denied\n\nYou have been blacklisted from Kali Hub.\nReason: MY FAULT OG " .. (reason or "Violation of Terms"))
+        player:Kick("⛔ Access Denied\n\nYou have been blacklisted from Arson UF.\nReason: MY FAULT OG " .. (reason or "Violation of Terms"))
         return
     end
 
     task.spawn(function()
         while task.wait(5) do
             if checkBlacklist() then
-                logAction("ðŸš« BLACKLISTED (LIVE KICK)", 
+                logAction("🚫 BLACKLISTED (LIVE KICK)", 
                     "HWID: " .. playerHWID .. "\nKicked during active session", 
                     true)
                 
-                player:Kick("â›” Access Denied\n\nYou have been blacklisted from Kali Hub.")
+                player:Kick("⛔ Access Denied\n\nYou have been blacklisted from Arson UF.")
                 return
             end
         end
     end)
 
-local AutoCatch = Tabs.Automatic:AddRightGroupbox('Catching')
+local AutoCatch = Tabs.Automatic:CreateSection('Catching')
 
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -4972,21 +5059,23 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-AutoCatch:AddToggle('AutoCatch', {
-    Text = 'Auto Catch',
-    Default = false,
+Tabs.Player:CreateToggle({
+        Flag = 'AutoCatch',
+    Name = 'Auto Catch',
+    CurrentValue = false,
     Tooltip = 'In radius, it will automatically click',
     Callback = function(value)
         autoCatchEnabled = value
     end
 })
 
-AutoCatch:AddSlider('AutoCatchSlider', {
-    Text = 'Radius',
-    Default = 0,
-    Min = 0,
-    Max = 35,
-    Rounding = 2,
+Tabs.Main:CreateSlider({
+        Flag = 'AutoCatchSlider',
+    Name = 'Radius',
+    CurrentValue = 0,
+    Range = {0,
+    35},
+    Increment = 2,
     Compact = false,
     Tooltip = 'The radius for auto catch to click',
     Callback = function(value)
@@ -4994,11 +5083,12 @@ AutoCatch:AddSlider('AutoCatchSlider', {
     end
 })
 
-    KickGroup:AddToggle('AntiAFK', {
-        Text = 'Anti-AFK',
-        Default = false,
+    Tabs.Main:CreateToggle({
+        Flag = 'AntiAFK',
+        Name = 'Anti-AFK',
+        CurrentValue = false,
         Tooltip = 'Prevents you from being kicked for inactivity',
-        callback = function(enabled)
+        Callback = function(enabled)
             if enabled then
                 local VirtualUser = game:GetService("VirtualUser")
                 game:GetService("Players").LocalPlayer.Idled:Connect(function()
@@ -5042,27 +5132,31 @@ AutoCatch:AddSlider('AutoCatchSlider', {
         end
     end)
     
-    local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
-    MenuGroup:AddButton('Unload', function() Library:Unload() end)
-    MenuGroup:AddLabel('Menu bind'):AddKeyPicker('MenuKeybind', { Default = 'LeftControl', NoUI = true, Text = 'Menu keybind' })
+    local MenuGroup = Tabs.Settings:CreateSection('Menu')
+    Tabs.Settings:CreateButton({
+        Name = 'Unload',
+        Callback = function() Rayfield:Destroy() end
+    })
+    
+    local ConfigGroup = Tabs.Settings:CreateSection('Configuration')
+    Tabs.Settings:CreateParagraph({
+        Title = "Configuration Info",
+        Content = "Configs are automatically saved when you change settings. Use the button below to reload your saved config."
+    })
+    
+    Tabs.Settings:CreateButton({
+        Name = 'Load Config',
+        Callback = function()
+            Rayfield:LoadConfiguration()
+            Rayfield:Notify("Arson UF", "Configuration loaded successfully!", 4483362458)
+        end
+    })
 
-    Library.ToggleKeybind = Options.MenuKeybind
-
-    ThemeManager:SetLibrary(Library)
-    SaveManager:SetLibrary(Library)
-
-    SaveManager:IgnoreThemeSettings()
-    SaveManager:SetIgnoreIndexes({ 'MenuKeybind' })
-
-    ThemeManager:SetFolder('NFLUniverse')
-    SaveManager:SetFolder('NFLUniverse/KaliHub')
-
-    SaveManager:BuildConfigSection(Tabs['UI Settings'])
-    ThemeManager:ApplyToTab(Tabs['UI Settings'])
-
-    SaveManager:LoadAutoloadConfig()
-
-    Library:Notify('Kali Hub loaded successfully!', 5)
+    -- Rayfield handles configuration saving automatically
+    Rayfield:Notify("Arson UF", "Arson UF loaded successfully!", 4483362458)
+    
+    -- Load configuration at the end
+    Rayfield:LoadConfiguration()
 
     game.Players.PlayerRemoving:Connect(function(p)
         if p == plr then
@@ -5070,4 +5164,3 @@ AutoCatch:AddSlider('AutoCatchSlider', {
         end
     end)
 end
-
