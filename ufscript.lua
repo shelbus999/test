@@ -2336,18 +2336,14 @@ end,
     })
     
     local AutoClickSection = MiscTab:CreateSection("Auto Click")
-    
-    local autoClickEnabled = false
-    local autoClickRadius = 20
+    local autoClickData = {enabled = false, radius = 20, lastCheck = 0, connection = nil}
     
     local AutoClickToggle = MiscTab:CreateToggle({
         Name = "Auto Click",
         CurrentValue = false,
         Flag = "AutoClick",
         Tooltip = "Automatically clicks when ball is in radius",
-        Callback = function(Value)
-            autoClickEnabled = Value
-        end,
+        Callback = function(Value) autoClickData.enabled = Value end,
     })
     
     local AutoClickRadiusSlider = MiscTab:CreateSlider({
@@ -2357,33 +2353,30 @@ end,
         CurrentValue = 20,
         Flag = "AutoClickRadius",
         Tooltip = "Distance to automatically click the ball",
-        Callback = function(Value)
-            autoClickRadius = Value
-        end,
+        Callback = function(Value) autoClickData.radius = Value end,
     })
     
     local AutoTouchdownSection = MiscTab:CreateSection("Auto Touchdown")
-    local autoTouchdownEnabled, autoTouchdownConnection, lastTeleportTime = false, nil, 0
+    local tdData = {enabled = false, conn = nil, lastTime = 0}
     local AutoTouchdownToggle = MiscTab:CreateToggle({
         Name = "Auto Touchdown",
         CurrentValue = false,
         Flag = "AutoTouchdownMobile",
         Tooltip = "When you have the ball it will automatically touchdown for 6 points",
-        Callback = function(Value)
-            autoTouchdownEnabled = Value
-            if autoTouchdownConnection then autoTouchdownConnection:Disconnect() autoTouchdownConnection = nil end
-            if Value then
-                autoTouchdownConnection = RunService.Heartbeat:Connect(function()
-                    if not autoTouchdownEnabled then return end
-                    local currentTime = tick()
-                    if currentTime - lastTeleportTime < 2 then return end
-                    local char = plr.Character
-                    if char and (char:FindFirstChild("Football") or (Workspace:FindFirstChild(plr.Name) and Workspace[plr.Name]:FindFirstChild("GAMEOBJECTS") and Workspace[plr.Name].GAMEOBJECTS:FindFirstChild("Football"))) then
-                        local hrp = char:FindFirstChild("HumanoidRootPart")
-                        if hrp then
-                            local pos, endzone1, endzone2 = hrp.Position, Vector3.new(161, 4, -2), Vector3.new(-166, 4, 0)
-                            hrp.CFrame = CFrame.new((pos - endzone1).Magnitude < (pos - endzone2).Magnitude and endzone1 or endzone2)
-                            lastTeleportTime = currentTime
+        Callback = function(v)
+            tdData.enabled = v
+            if tdData.conn then tdData.conn:Disconnect() tdData.conn = nil end
+            if v then
+                tdData.conn = RunService.Heartbeat:Connect(function()
+                    if not tdData.enabled or tick() - tdData.lastTime < 2 then return end
+                    local c = plr.Character
+                    if c and (c:FindFirstChild("Football") or (Workspace:FindFirstChild(plr.Name) and Workspace[plr.Name]:FindFirstChild("GAMEOBJECTS") and Workspace[plr.Name].GAMEOBJECTS:FindFirstChild("Football"))) then
+                        local h = c:FindFirstChild("HumanoidRootPart")
+                        if h then
+                            local p = h.Position
+                            local e1, e2 = Vector3.new(161, 4, -2), Vector3.new(-166, 4, 0)
+                            h.CFrame = CFrame.new((p - e1).Magnitude < (p - e2).Magnitude and e1 or e2)
+                            tdData.lastTime = tick()
                         end
                     end
                 end)
@@ -2391,49 +2384,46 @@ end,
         end,
     })
     
-    local lastAutoClickCheck, autoClickConnection = 0, nil
     spawn(function()
         while true do
-            if autoClickEnabled and not autoClickConnection then
-                autoClickConnection = RunService.Heartbeat:Connect(function()
-                    if not autoClickEnabled then return end
-                    local now = tick()
-                    if now - lastAutoClickCheck < 0.1 then return end
-                    lastAutoClickCheck = now
-                    local char, hrp = plr.Character, plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
-                    if not hrp then return end
-                    local ball, parkMap = nil, Workspace:FindFirstChild("ParkMap")
-                    if parkMap and parkMap:FindFirstChild("Replicated") and parkMap.Replicated:FindFirstChild("Fields") then
-                        for _, fieldName in ipairs({"LeftField", "RightField", "BLeftField", "BRightField", "HighField", "TLeftField", "TRightField"}) do
-                            local field = parkMap.Replicated.Fields:FindFirstChild(fieldName)
-                            if field and field:FindFirstChild("Replicated") then
-                                local fb = field.Replicated:FindFirstChild("Football")
-                                if fb and fb:IsA("BasePart") then ball = fb break end
-                            end
-                        end
-                    end
-                    if not ball and Workspace:FindFirstChild("Games") then
-                        for _, gameInstance in ipairs(Workspace.Games:GetChildren()) do
-                            if gameInstance:FindFirstChild("Replicated") then
-                                for _, item in ipairs(gameInstance.Replicated:GetChildren()) do
-                                    if item:IsA("BasePart") and item.Name == "Football" then ball = item break end
+            if autoClickData.enabled and not autoClickData.connection then
+                autoClickData.connection = RunService.Heartbeat:Connect(function()
+                    local d = autoClickData
+                    if not d.enabled or tick() - d.lastCheck < 0.1 then return end
+                    d.lastCheck = tick()
+                    local c = plr.Character
+                    local h = c and c:FindFirstChild("HumanoidRootPart")
+                    if not h then return end
+                    local b = Workspace:FindFirstChild("Football") or (function()
+                        local pm = Workspace:FindFirstChild("ParkMap")
+                        if pm and pm:FindFirstChild("Replicated") and pm.Replicated:FindFirstChild("Fields") then
+                            for _, n in ipairs({"LeftField", "RightField", "BLeftField", "BRightField", "HighField", "TLeftField", "TRightField"}) do
+                                local f = pm.Replicated.Fields:FindFirstChild(n)
+                                if f and f:FindFirstChild("Replicated") then
+                                    local fb = f.Replicated:FindFirstChild("Football")
+                                    if fb and fb:IsA("BasePart") then return fb end
                                 end
                             end
-                            if ball then break end
                         end
-                    end
-                    if ball and ball.Parent ~= char and (ball.Position - hrp.Position).Magnitude <= autoClickRadius and ReplicatedStorage:FindFirstChild("Games") then
-                        for _, child in ipairs(ReplicatedStorage.Games:GetChildren()) do
-                            if child:FindFirstChild("ReEvent") then
-                                child.ReEvent:FireServer("Mechanics", "Catching", true)
-                                break
-                            end
-                        end
+                        local gf = Workspace:FindFirstChild("Games")
+                        if gf then for _, gi in ipairs(gf:GetChildren()) do
+                            local rf = gi:FindFirstChild("Replicated")
+                            if rf then for _, it in ipairs(rf:GetChildren()) do
+                                if it:IsA("BasePart") and it.Name == "Football" then return it end
+                            end end
+                        end end
+                    end)()
+                    if b and b.Parent ~= c and (b.Position - h.Position).Magnitude <= d.radius then
+                        local gs = ReplicatedStorage:FindFirstChild("Games")
+                        if gs then for _, ch in ipairs(gs:GetChildren()) do
+                            local re = ch:FindFirstChild("ReEvent")
+                            if re then re:FireServer("Mechanics", "Catching", true) break end
+                        end end
                     end
                 end)
-            elseif not autoClickEnabled and autoClickConnection then
-                autoClickConnection:Disconnect()
-                autoClickConnection = nil
+            elseif not autoClickData.enabled and autoClickData.connection then
+                autoClickData.connection:Disconnect()
+                autoClickData.connection = nil
             end
             task.wait(0.1)
         end
