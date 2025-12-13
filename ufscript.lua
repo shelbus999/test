@@ -653,6 +653,10 @@ local qbData = {
     Power = 0,
     Direction = Vector3.new(0, 0, 0)
 }
+local qbDataSmooth = {
+    Position = Vector3.new(0, 0, 0),
+    Direction = Vector3.new(0, 0, 0)
+}
 
 local FootballRemote = nil
 
@@ -896,7 +900,7 @@ local function getClosestPlayerInFront()
             if targetHRP then
                 local toTarget = (targetHRP.Position - qbPos).Unit
                 local dotProduct = qbLookVector:Dot(toTarget)
-                local distance = (targetHRP.Position - qbPos).Magnitude
+                    local distance = (targetHRP.Position - qbPos).Magnitude
                 
                 -- Stricter angle threshold (0.4 = ~66 degrees) - only targets more directly in front
                 -- Max distance of 400 studs to avoid locking onto distant players
@@ -1033,52 +1037,44 @@ local function updatePlayerTrack(player, curPos, curVel)
     -- Blend velocities: 60% immediate, 30% short-term, 10% trend
     local avgVel = immediateVel * 0.6 + shortTermVel * 0.3 + trendVel * 0.1
     
-    -- Detect sudden stops and deceleration
+    -- Detect sudden stops and deceleration (less aggressive to prevent jitter)
     local isStopping = false
     local decelerationRate = 0
-    if #track.history >= 3 then
+    if #track.history >= 4 then
         local currentSpeed = track.history[1].Magnitude
-        local recentSpeed = track.history[2].Magnitude
-        local olderSpeed = track.history[3].Magnitude
-        decelerationRate = (olderSpeed - currentSpeed) / math.max(olderSpeed, 0.1)
+        local olderSpeed = track.history[4].Magnitude
+        decelerationRate = math.max(0, (olderSpeed - currentSpeed) / math.max(olderSpeed, 0.1))
         
-        -- Detect sudden stop (deceleration > 70% in recent frames)
-        if decelerationRate > 0.7 and currentSpeed < 3 then
+        -- More conservative stop detection (needs to be very slow AND decelerating fast)
+        if decelerationRate > 0.85 and currentSpeed < 2 then
             isStopping = true
         end
     end
     
-    -- Detect sudden direction changes (sharp turns or cuts)
+    -- Detect sudden direction changes (less aggressive)
     local suddenDirectionChange = false
-    if #track.history >= 2 then
+    if #track.history >= 3 then
         local recentDir = track.history[1].Unit
-        local previousDir = track.history[2].Unit
-        local dotProduct = recentDir:Dot(previousDir)
-        -- If direction change is > 90 degrees (dot product < 0), it's a sudden change
-        if dotProduct < 0 then
+        local olderDir = track.history[3].Unit
+        local dotProduct = recentDir:Dot(olderDir)
+        -- Only consider it sudden if direction change is > 120 degrees (more conservative)
+        if dotProduct < -0.5 then
             suddenDirectionChange = true
         end
     end
     
-    -- Advanced predicted velocity: accounts for acceleration AND jerk
-    -- v(t) = v0 + a*t + 0.5*j*t^2
-    local predictionTime = 0.2 -- Look ahead 0.2 seconds
-    local predictedVel = avgVel + (avgAcc * predictionTime) + (track.jerk * 0.5 * predictionTime * predictionTime)
+    -- Simplified predicted velocity (less complex = more stable)
+    local predictionTime = 0.15 -- Shorter look ahead for stability
+    local predictedVel = avgVel + (avgAcc * predictionTime * 0.5) -- Reduced acceleration influence
     
-    -- Adjust for sudden stops - heavily reduce predicted velocity
+    -- Gentle adjustments for stops (less aggressive)
     if isStopping then
-        predictedVel = avgVel * 0.2 -- Almost stop
-    end
-    
-    -- Adjust for sudden direction changes - reduce prediction time
-    if suddenDirectionChange then
-        predictedVel = avgVel * 0.6 + predictedVel * 0.4 -- Blend more toward current velocity
-    end
-    
-    -- Adjust for deceleration - scale down prediction
-    if decelerationRate > 0.3 then
-        local reductionFactor = 1 - (decelerationRate * 0.6)
-        predictedVel = predictedVel * math.max(reductionFactor, 0.3)
+        predictedVel = avgVel * 0.4 -- Less extreme reduction
+    elseif suddenDirectionChange then
+        predictedVel = avgVel * 0.75 + predictedVel * 0.25 -- More conservative blend
+    elseif decelerationRate > 0.4 then
+        local reductionFactor = 1 - (decelerationRate * 0.4) -- Less aggressive reduction
+        predictedVel = predictedVel * math.max(reductionFactor, 0.5)
     end
     
     -- Direction change and turning rate analysis
@@ -1160,25 +1156,40 @@ local function CalculateQBThrow(targetPlayer)
     local trackMag = (track.avgVel and track.avgVel.Magnitude) or 0
 
     local distance = (Vector3.new(receiverPos.X, 0, receiverPos.Z) - Vector3.new(originPos.X, 0, originPos.Z)).Magnitude
+    distance = distance or 0
+    
+    -- Define velocity threshold early
+    local velocityThreshold = 3.0
     
     -- Check if receiver is running away from QB (for better prediction)
     local toReceiver = (receiverPos - originPos)
     local toReceiverDir = toReceiver.Unit
-    local receiverVelDir = track.avgVel.Unit
-    local runningAway = toReceiverDir:Dot(receiverVelDir) > 0.3 -- If velocity is in similar direction as QB->Receiver, they're running away
+    local receiverVelDir = (track.avgVel and track.avgVel.Unit) or Vector3.new(0,0,0)
+    local runningAway = false
+    if track.avgVel and track.avgVel.Magnitude > 0 then
+        runningAway = toReceiverDir:Dot(receiverVelDir) > 0.3
+    end
+    
+    -- Detect lateral movement (running sideways) - when velocity is perpendicular to QB->Receiver direction
+    local lateralMovement = false
+    if (trackMag or 0) > velocityThreshold and track.avgVel and track.avgVel.Magnitude > 0 then
+        local dotProduct = math.abs(toReceiverDir:Dot(receiverVelDir))
+        -- If dot product is low (close to 0), they're moving perpendicular (sideways)
+        if dotProduct < 0.5 then
+            lateralMovement = true
+        end
+    end
 
     local power
-    if distance >= 300 then
+    if (distance or 0) >= 300 then
         power = 120
-    elseif trackMag > 12 or distance > 100 then
+    elseif (trackMag or 0) > 12 or (distance or 0) > 100 then
         power = 100
     else
         power = 80
     end
 
     local flightTime = getFlightTimeFromDistance(power, distance)
-
-    local velocityThreshold = 3.0
     local predictedPos
     local arcY
     local predictionTime
@@ -1190,41 +1201,32 @@ local function CalculateQBThrow(targetPlayer)
         predicted = receiverPos
         predictionTime = 0
     elseif qbThrowMode == "Dime" then
-        -- Dime: Ultra-precise prediction with advanced physics
-        if trackMag > velocityThreshold then
-            -- Adaptive prediction time based on distance and speed
-            local baseMultiplier = 1.08
+        -- Dime: Slightly increased prediction (tiny bit further)
+        if (trackMag or 0) > velocityThreshold then
+            local baseMultiplier = 0.98
             if runningAway then
-                baseMultiplier = 1.25
+                baseMultiplier = 1.12
             end
-            -- Adjust for speed - faster players need more prediction
-            local speedFactor = math.min(track.speed / 20, 0.15)
+            local speedFactor = math.min((track.speed or 0) / 28, 0.07)
             baseMultiplier = baseMultiplier + speedFactor
+            
+            if track.isStopping then
+                baseMultiplier = baseMultiplier * 0.5
+            elseif track.suddenDirectionChange then
+                baseMultiplier = baseMultiplier * 0.75
+            elseif track.decelerationRate and track.decelerationRate > 0.4 then
+                baseMultiplier = baseMultiplier * (1 - track.decelerationRate * 0.3)
+            end
+            
             predictionTime = flightTime * baseMultiplier
-            
-            -- Use advanced predicted velocity (accounts for acceleration and jerk)
             local vel = track.predictedVel or track.avgVel
-            
-            -- Advanced physics: position = current + v*t + 0.5*a*t^2 + (1/6)*j*t^3
             local velocityComponent = vel * predictionTime
-            local accelerationComponent = track.acc * 0.5 * predictionTime * predictionTime
-            local jerkComponent = (track.jerk or Vector3.new(0,0,0)) * (1/6) * predictionTime * predictionTime * predictionTime
-            local basePrediction = receiverPos + velocityComponent + accelerationComponent + jerkComponent
+            local accelerationComponent = (track.acc or Vector3.new(0,0,0)) * 0.32 * predictionTime * predictionTime
+            local basePrediction = receiverPos + velocityComponent + accelerationComponent
             
-            -- Account for angular velocity (turning)
-            if track.angularVelocity and track.angularVelocity > 0.1 then
-                local turnCompensation = track.angularVelocity * predictionTime * 0.3
-                local perpendicular = vel:Cross(Vector3.new(0,1,0)).Unit
-                basePrediction = basePrediction + (perpendicular * turnCompensation)
-            end
-            
-            -- Adaptive lead based on speed and direction change
-            local leadFactor = runningAway and 0.1 or 0.05
-            if track.directionChange and track.directionChange > 0.2 then
-                leadFactor = leadFactor * (1 + track.directionChange * 0.5)
-            end
-            local leadDistance = predictionTime * track.speed * leadFactor
-            local lead = vel.Unit * leadDistance
+            local leadFactor = runningAway and 0.08 or 0.04
+            local leadDistance = predictionTime * (track.speed or 0) * leadFactor
+            local lead = (vel and vel.Magnitude > 0) and (vel.Unit * leadDistance) or Vector3.new(0,0,0)
             
             predicted = basePrediction + lead
         else
@@ -1232,35 +1234,34 @@ local function CalculateQBThrow(targetPlayer)
             predictionTime = 0
         end
     elseif qbThrowMode == "Bullet" then
-        -- Bullet: Ultra-fast with precise minimal prediction
-        if trackMag > velocityThreshold then
-            local baseMultiplier = 1.02
+        -- Bullet: Extremely high prediction to prevent underthrows
+        if (trackMag or 0) > velocityThreshold then
+            local baseMultiplier = 1.7
             if runningAway then
-                baseMultiplier = 1.12
+                baseMultiplier = 1.85
             end
             
-            -- Adjust for stops and sudden changes
+            -- Add speed factor for faster moving targets (increased even more)
+            local speedFactor = math.min((track.speed or 0) / 12, 0.2)
+            baseMultiplier = baseMultiplier + speedFactor
+            
             if track.isStopping then
-                baseMultiplier = baseMultiplier * 0.25
+                baseMultiplier = baseMultiplier * 0.6
             elseif track.suddenDirectionChange then
-                baseMultiplier = baseMultiplier * 0.55
-            elseif track.decelerationRate and track.decelerationRate > 0.3 then
-                baseMultiplier = baseMultiplier * (1 - track.decelerationRate * 0.5)
+                baseMultiplier = baseMultiplier * 0.8
+            elseif track.decelerationRate and track.decelerationRate > 0.4 then
+                baseMultiplier = baseMultiplier * (1 - track.decelerationRate * 0.2)
             end
             
             predictionTime = flightTime * baseMultiplier
-            local vel = track.predictedVel or track.avgVel
-            
-            -- Full physics calculation
+            local vel = track.predictedVel or track.avgVel or Vector3.new(0,0,0)
             local velocityComponent = vel * predictionTime
-            local accelerationComponent = track.acc * 0.5 * predictionTime * predictionTime
-            local jerkComponent = (track.jerk or Vector3.new(0,0,0)) * (1/6) * predictionTime * predictionTime * predictionTime
-            local basePrediction = receiverPos + velocityComponent + accelerationComponent + jerkComponent
+            local accelerationComponent = (track.acc or Vector3.new(0,0,0)) * 0.95 * predictionTime * predictionTime
+            local basePrediction = receiverPos + velocityComponent + accelerationComponent
             
-            -- Minimal lead for bullet
-            local leadFactor = runningAway and 0.06 or 0.03
-            local leadDistance = predictionTime * track.speed * leadFactor
-            local lead = vel.Unit * leadDistance
+            local leadFactor = runningAway and 0.45 or 0.38
+            local leadDistance = predictionTime * (track.speed or 0) * leadFactor
+            local lead = (vel and vel.Magnitude > 0) and (vel.Unit * leadDistance) or Vector3.new(0,0,0)
             
             predicted = basePrediction + lead
         else
@@ -1268,45 +1269,42 @@ local function CalculateQBThrow(targetPlayer)
             predictionTime = 0
         end
     elseif qbThrowMode == "Jump" then
-        -- Jump: High arc with extended ultra-precise prediction
-        if trackMag > velocityThreshold then
-            local baseMultiplier = runningAway and 1.45 or 1.3
-            -- Extra prediction for jump balls
-            local speedFactor = math.min(track.speed / 18, 0.2)
+        -- Jump: Slightly increased prediction (tiny bit further)
+        if (trackMag or 0) > velocityThreshold then
+            local baseMultiplier = runningAway and 1.22 or 1.07
+            local speedFactor = math.min((track.speed or 0) / 28, 0.09)
             baseMultiplier = baseMultiplier + speedFactor
             
-            -- Adjust for stops and sudden changes (but less reduction for jump)
             if track.isStopping then
-                baseMultiplier = baseMultiplier * 0.4
+                baseMultiplier = baseMultiplier * 0.6
             elseif track.suddenDirectionChange then
-                baseMultiplier = baseMultiplier * 0.7
-            elseif track.decelerationRate and track.decelerationRate > 0.3 then
-                baseMultiplier = baseMultiplier * (1 - track.decelerationRate * 0.4)
+                baseMultiplier = baseMultiplier * 0.8
+            elseif track.decelerationRate and track.decelerationRate > 0.4 then
+                baseMultiplier = baseMultiplier * (1 - track.decelerationRate * 0.3)
             end
             
             predictionTime = flightTime * baseMultiplier
-            local vel = track.predictedVel or track.avgVel
+            local vel = track.predictedVel or track.avgVel or Vector3.new(0,0,0)
             
             -- Full physics with extended time
             local velocityComponent = vel * predictionTime
-            local accelerationComponent = track.acc * 0.5 * predictionTime * predictionTime
-            local jerkComponent = (track.jerk or Vector3.new(0,0,0)) * (1/6) * predictionTime * predictionTime * predictionTime
-            local basePrediction = receiverPos + velocityComponent + accelerationComponent + jerkComponent
+            local accelerationComponent = (track.acc or Vector3.new(0,0,0)) * 0.32 * predictionTime * predictionTime
+            local basePrediction = receiverPos + velocityComponent + accelerationComponent
             
-            -- Account for turning during jump
+            -- Account for turning during jump (reduced compensation)
             if track.angularVelocity and track.angularVelocity > 0.1 then
-                local turnCompensation = track.angularVelocity * predictionTime * 0.4
-                local perpendicular = vel:Cross(Vector3.new(0,1,0)).Unit
+                local turnCompensation = track.angularVelocity * predictionTime * 0.2
+                local perpendicular = (vel.Magnitude > 0) and vel:Cross(Vector3.new(0,1,0)).Unit or Vector3.new(0,0,0)
                 basePrediction = basePrediction + (perpendicular * turnCompensation)
             end
             
-            -- Extended lead for jump balls
-            local leadFactor = runningAway and 0.28 or 0.18
+            -- Slightly increased lead for jump balls
+            local leadFactor = runningAway and 0.21 or 0.14
             if track.directionChange and track.directionChange > 0.15 then
-                leadFactor = leadFactor * (1 + track.directionChange * 0.3)
+                leadFactor = leadFactor * (1 + track.directionChange * 0.2)
             end
-            local leadDistance = predictionTime * track.speed * leadFactor
-            local lead = vel.Unit * leadDistance
+            local leadDistance = predictionTime * (track.speed or 0) * leadFactor
+            local lead = (vel and vel.Magnitude > 0) and (vel.Unit * leadDistance) or Vector3.new(0,0,0)
             
             predicted = basePrediction + lead
         else
@@ -1314,44 +1312,41 @@ local function CalculateQBThrow(targetPlayer)
             predictionTime = 0
         end
     elseif qbThrowMode == "Mag" then
-        -- Mag: Moderate ultra-precise prediction for mag feature
-        if trackMag > velocityThreshold then
-            local baseMultiplier = runningAway and 1.18 or 1.08
-            local speedFactor = math.min(track.speed / 22, 0.12)
+        -- Mag: Reduced prediction to prevent overthrows
+        if (trackMag or 0) > velocityThreshold then
+            local baseMultiplier = runningAway and 1.12 or 1.02
+            local speedFactor = math.min((track.speed or 0) / 25, 0.1)
             baseMultiplier = baseMultiplier + speedFactor
             
-            -- Adjust for stops and sudden changes
+            -- Adjust for lateral movement - reduce prediction when running sideways
+            if lateralMovement then
+                baseMultiplier = baseMultiplier * 0.85
+            end
+            
+            -- Gentle adjustments for stops
             if track.isStopping then
-                baseMultiplier = baseMultiplier * 0.35
+                baseMultiplier = baseMultiplier * 0.55
             elseif track.suddenDirectionChange then
-                baseMultiplier = baseMultiplier * 0.65
-            elseif track.decelerationRate and track.decelerationRate > 0.3 then
-                baseMultiplier = baseMultiplier * (1 - track.decelerationRate * 0.45)
+                baseMultiplier = baseMultiplier * 0.75
+            elseif track.decelerationRate and track.decelerationRate > 0.4 then
+                baseMultiplier = baseMultiplier * (1 - track.decelerationRate * 0.3)
             end
             
             predictionTime = flightTime * baseMultiplier
-            local vel = track.predictedVel or track.avgVel
+            local vel = track.predictedVel or track.avgVel or Vector3.new(0,0,0)
             
-            -- Full physics calculation
+            -- Simplified physics calculation (removed jerk for stability)
             local velocityComponent = vel * predictionTime
-            local accelerationComponent = track.acc * 0.5 * predictionTime * predictionTime
-            local jerkComponent = (track.jerk or Vector3.new(0,0,0)) * (1/6) * predictionTime * predictionTime * predictionTime
-            local basePrediction = receiverPos + velocityComponent + accelerationComponent + jerkComponent
+            local accelerationComponent = (track.acc or Vector3.new(0,0,0)) * 0.35 * predictionTime * predictionTime
+            local basePrediction = receiverPos + velocityComponent + accelerationComponent
             
-            -- Account for turning
-            if track.angularVelocity and track.angularVelocity > 0.1 then
-                local turnCompensation = track.angularVelocity * predictionTime * 0.25
-                local perpendicular = vel:Cross(Vector3.new(0,1,0)).Unit
-                basePrediction = basePrediction + (perpendicular * turnCompensation)
+            -- Further reduced lead to prevent overshooting
+            local leadFactor = runningAway and 0.1 or 0.05
+            if lateralMovement then
+                leadFactor = leadFactor * 0.7 -- Less lead when running sideways
             end
-            
-            -- Moderate lead for mag
-            local leadFactor = runningAway and 0.12 or 0.07
-            if track.directionChange and track.directionChange > 0.2 then
-                leadFactor = leadFactor * (1 + track.directionChange * 0.4)
-            end
-            local leadDistance = predictionTime * track.speed * leadFactor
-            local lead = vel.Unit * leadDistance
+            local leadDistance = predictionTime * (track.speed or 0) * leadFactor
+            local lead = (vel and vel.Magnitude > 0) and (vel.Unit * leadDistance) or Vector3.new(0,0,0)
             
             predicted = basePrediction + lead
         else
@@ -1360,30 +1355,21 @@ local function CalculateQBThrow(targetPlayer)
         end
     else
         -- Default to Dime (ultra-precise)
-        if trackMag > velocityThreshold then
+        if (trackMag or 0) > velocityThreshold then
             local baseMultiplier = runningAway and 1.25 or 1.08
-            local speedFactor = math.min(track.speed / 20, 0.15)
+            local speedFactor = math.min((track.speed or 0) / 20, 0.15)
             baseMultiplier = baseMultiplier + speedFactor
             predictionTime = flightTime * baseMultiplier
             local vel = track.predictedVel or track.avgVel
             
             local velocityComponent = vel * predictionTime
-            local accelerationComponent = track.acc * 0.5 * predictionTime * predictionTime
-            local jerkComponent = (track.jerk or Vector3.new(0,0,0)) * (1/6) * predictionTime * predictionTime * predictionTime
-            local basePrediction = receiverPos + velocityComponent + accelerationComponent + jerkComponent
+            local accelerationComponent = (track.acc or Vector3.new(0,0,0)) * 0.4 * predictionTime * predictionTime
+            local basePrediction = receiverPos + velocityComponent + accelerationComponent
             
-            if track.angularVelocity and track.angularVelocity > 0.1 then
-                local turnCompensation = track.angularVelocity * predictionTime * 0.3
-                local perpendicular = vel:Cross(Vector3.new(0,1,0)).Unit
-                basePrediction = basePrediction + (perpendicular * turnCompensation)
-            end
-            
+            -- Simple lead (removed angular compensation for stability)
             local leadFactor = runningAway and 0.1 or 0.05
-            if track.directionChange and track.directionChange > 0.2 then
-                leadFactor = leadFactor * (1 + track.directionChange * 0.5)
-            end
-            local leadDistance = predictionTime * track.speed * leadFactor
-            local lead = vel.Unit * leadDistance
+            local leadDistance = predictionTime * (track.speed or 0) * leadFactor
+            local lead = (vel and vel.Magnitude > 0) and (vel.Unit * leadDistance) or Vector3.new(0,0,0)
             predicted = basePrediction + lead
         else
             predicted = receiverPos
@@ -1392,7 +1378,7 @@ local function CalculateQBThrow(targetPlayer)
     end
 
     -- Calculate arc based on mode, distance, and receiver height for optimal aiming
-    local moveDist = (Vector3.new(predicted.X, originPos.Y, predicted.Z) - Vector3.new(originPos.X, originPos.Y, originPos.Z)).Magnitude
+        local moveDist = (Vector3.new(predicted.X, originPos.Y, predicted.Z) - Vector3.new(originPos.X, originPos.Y, originPos.Z)).Magnitude
     
     -- Get receiver's height (assume HumanoidRootPart is around 2-3 studs from ground for catch height)
     local receiverHeight = predicted.Y
@@ -1400,7 +1386,7 @@ local function CalculateQBThrow(targetPlayer)
     local heightDiff = receiverHeight - originHeight
     
     -- Base arc height from table
-    if trackMag > velocityThreshold then
+    if (trackMag or 0) > velocityThreshold then
         arcY = getArcYFromTable(arcYTable_moving, power, moveDist)
     else
         arcY = getArcYFromTable(arcYTable_stationary, power, distance)
@@ -1419,27 +1405,33 @@ local function CalculateQBThrow(targetPlayer)
         modeMultiplier = 0.65
         distanceAdjustment = math.min(moveDist / 500, 0.35)
     elseif qbThrowMode == "Jump" then
-        -- High arc for jump balls
-        modeMultiplier = 1.8
-        distanceAdjustment = math.min(moveDist / 200, 1.2)
+        -- High arc for jump balls (reduced further to prevent overshooting)
+        modeMultiplier = 1.15
+        distanceAdjustment = math.min(moveDist / 400, 0.5)
     elseif qbThrowMode == "Mag" then
-        -- Moderate arc for mag
-        modeMultiplier = 1.1
-        distanceAdjustment = math.min(moveDist / 350, 0.6)
+        -- Moderate arc for mag (reduced to prevent overthrows)
+        modeMultiplier = 1.05
+        distanceAdjustment = math.min(moveDist / 400, 0.5)
+        
+        -- Reduce arc height when receiver is running sideways to prevent high throws
+        if lateralMovement then
+            modeMultiplier = modeMultiplier * 0.85
+            distanceAdjustment = distanceAdjustment * 0.8
+        end
     else -- Dime
-        -- Balanced arc, adapts to distance
+        -- Balanced arc, adapts to distance (reduced to prevent overthrows)
         if moveDist > 280 then
-            modeMultiplier = 1.25
-            distanceAdjustment = 0.5
+            modeMultiplier = 1.1
+            distanceAdjustment = 0.3
         elseif moveDist > 150 then
-            modeMultiplier = 1.15
-            distanceAdjustment = 0.35
-        elseif moveDist > 80 then
             modeMultiplier = 1.05
             distanceAdjustment = 0.2
-        else
-            modeMultiplier = 0.95
+        elseif moveDist > 80 then
+            modeMultiplier = 1.0
             distanceAdjustment = 0.1
+        else
+            modeMultiplier = 0.9
+            distanceAdjustment = 0.05
         end
     end
     
@@ -1454,9 +1446,13 @@ local function CalculateQBThrow(targetPlayer)
     local minArc = receiverHeight + 1.5 -- 1.5 studs above receiver for catch
     arcY = math.max(arcY, minArc)
     
-    -- For stationary targets, reduce arc slightly to avoid throwing over head
-    if trackMag <= velocityThreshold and qbThrowMode == "Dime" then
-        arcY = arcY - 0.5
+    -- For stationary targets, reduce arc to avoid throwing over head
+    if (trackMag or 0) <= velocityThreshold then
+        if qbThrowMode == "Dime" then
+            arcY = arcY - 0.8
+        elseif qbThrowMode == "Jump" then
+            arcY = arcY - 0.6
+        end
     end
     
     predictedPos = Vector3.new(predicted.X, arcY, predicted.Z)
@@ -1512,10 +1508,23 @@ Tabs.Main:CreateToggle({
     Callback = function(Value)
         qbAimbotEnabled = Value
         if not Value then
+            -- Cleanup all QB aimbot resources
+            qbCurrentTargetPlayer = nil
+            qbTargetLocked = false
+            qbLockedTargetPlayer = nil
             UpdateTargetHighlight(nil)
             clearAkiBeam()
             LockButton.Visible = false
             QBInfoCards.Enabled = false
+            Player_Card.Visible = false
+            PowerCard.Visible = false
+            LockedCard.Visible = false
+            -- Clear trajectory folder
+            for _, part in ipairs(TrajectoryFolder:GetChildren()) do
+                part:Destroy()
+            end
+            -- Clear player tracking data
+            playerTrack = {}
         else
             LockButton.Visible = true
             QBInfoCards.Enabled = true
@@ -1634,21 +1643,21 @@ game:GetService("UserInputService").InputBegan:Connect(function(Input, GameProce
     end
 
     if Input.KeyCode == Enum.KeyCode.G and qbAimbotEnabled then
-        if qbTargetLocked and qbLockedTargetPlayer then
-            qbTargetLocked = false
-            qbLockedTargetPlayer = nil
+            if qbTargetLocked and qbLockedTargetPlayer then
+                qbTargetLocked = false
+                qbLockedTargetPlayer = nil
             LockButton.Text = "LOCK"
-            LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
-        else
-            local closestPlayer = getClosestPlayerInFront()
-            if closestPlayer then
-                qbLockedTargetPlayer = closestPlayer
-                qbTargetLocked = true
+                LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
+            else
+                local closestPlayer = getClosestPlayerInFront()
+                if closestPlayer then
+                    qbLockedTargetPlayer = closestPlayer
+                    qbTargetLocked = true
                 LockButton.Text = "LOCKED"
-                LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+                    LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+                end
             end
         end
-    end
     
     if Input.KeyCode == Enum.KeyCode.R and qbAimbotEnabled then
         local modes = {"Line", "Dime", "Bullet", "Jump", "Mag"}
@@ -1665,26 +1674,29 @@ game:GetService("UserInputService").InputBegan:Connect(function(Input, GameProce
     end
 end)
 
--- Main Loop (FAST - 50 updates per second for better target switching)
+-- Main Loop (SMOOTH - 30 updates per second to reduce jitter)
+local qbMainLoopRunning = true
 task.spawn(function()
     local plr = game.Players.LocalPlayer
-    while true do
-        task.wait(0.02)
+    while qbMainLoopRunning do
+        task.wait(0.033) -- ~30 FPS for smoother updates
 
-        local TargetPlayer
-        if qbTargetLocked and qbLockedTargetPlayer and qbLockedTargetPlayer.Character and qbLockedTargetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            TargetPlayer = qbLockedTargetPlayer
-        else
-            TargetPlayer = getClosestPlayerInFront()
-            if qbTargetLocked and not qbLockedTargetPlayer then
-                qbTargetLocked = false
-                LockButton.Text = "LOCK"
-                LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
+        -- Only process if QB aimbot is enabled
+        if qbAimbotEnabled then
+            local TargetPlayer
+            if qbTargetLocked and qbLockedTargetPlayer and qbLockedTargetPlayer.Character and qbLockedTargetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                TargetPlayer = qbLockedTargetPlayer
+            else
+                TargetPlayer = getClosestPlayerInFront()
+                if qbTargetLocked and not qbLockedTargetPlayer then
+                    qbTargetLocked = false
+                    LockButton.Text = "LOCK"
+                    LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
+                end
             end
-        end
-        qbCurrentTargetPlayer = TargetPlayer
+            qbCurrentTargetPlayer = TargetPlayer
 
-        if TargetPlayer and TargetPlayer.Character and TargetPlayer.Character:FindFirstChild("Head") then
+            if TargetPlayer and TargetPlayer.Character and TargetPlayer.Character:FindFirstChild("Head") then
             local target = TargetPlayer.Character
 
             TargetHighlight.OutlineColor = Color3.fromRGB(153, 51, 255)
@@ -1693,9 +1705,14 @@ task.spawn(function()
             local targetPos, power, flightTime, peakHeight, direction, vel3 = CalculateQBThrow(TargetPlayer)
 
             if targetPos and power and direction then
-                qbData.Position = targetPos
+                -- Smooth the position and direction to prevent jitter
+                local smoothFactor = 0.7 -- Higher = more smoothing (less jitter)
+                qbDataSmooth.Position = qbDataSmooth.Position * (1 - smoothFactor) + targetPos * smoothFactor
+                qbDataSmooth.Direction = qbDataSmooth.Direction * (1 - smoothFactor) + direction * smoothFactor
+                
+                qbData.Position = qbDataSmooth.Position
                 qbData.Power = power
-                qbData.Direction = direction
+                qbData.Direction = qbDataSmooth.Direction.Unit
 
                 ValuePower.Name = tostring(power)
                 ValuePlayer.Name = TargetPlayer.Name
@@ -1733,6 +1750,13 @@ task.spawn(function()
             ValueLocked.Name = "False"
             UpdateTargetHighlight(nil)
             clearAkiBeam()
+        end
+        else
+            -- QB aimbot disabled - cleanup
+            qbCurrentTargetPlayer = nil
+            UpdateTargetHighlight(nil)
+            clearAkiBeam()
+            QBInfoCards.Enabled = false
         end
     end
 end)
@@ -2781,7 +2805,9 @@ end,
         end
     end)
 
-    Tabs.Player:CreateToggle({
+    local AutoCatchSection = MiscTab:CreateSection("Auto Catch")
+    
+    MiscTab:CreateToggle({
         Name = "Auto Catch",
         CurrentValue = false,
         Flag = "AutoCatch",
@@ -2790,7 +2816,7 @@ end,
         end,
     })
 
-    Tabs.Main:CreateSlider({
+    MiscTab:CreateSlider({
         Name = "Catch Radius",
         Range = {0, 35},
         Increment = 1,
@@ -3507,6 +3533,10 @@ local qbData = {
     Power = 0,
     Direction = Vector3.new(0, 0, 0)
 }
+local qbDataSmooth = {
+    Position = Vector3.new(0, 0, 0),
+    Direction = Vector3.new(0, 0, 0)
+}
 
 local FootballRemote = nil
 
@@ -3750,7 +3780,7 @@ local function getClosestPlayerInFront()
             if targetHRP then
                 local toTarget = (targetHRP.Position - qbPos).Unit
                 local dotProduct = qbLookVector:Dot(toTarget)
-                local distance = (targetHRP.Position - qbPos).Magnitude
+                    local distance = (targetHRP.Position - qbPos).Magnitude
                 
                 -- Stricter angle threshold (0.4 = ~66 degrees) - only targets more directly in front
                 -- Max distance of 400 studs to avoid locking onto distant players
@@ -3887,52 +3917,44 @@ local function updatePlayerTrack(player, curPos, curVel)
     -- Blend velocities: 60% immediate, 30% short-term, 10% trend
     local avgVel = immediateVel * 0.6 + shortTermVel * 0.3 + trendVel * 0.1
     
-    -- Detect sudden stops and deceleration
+    -- Detect sudden stops and deceleration (less aggressive to prevent jitter)
     local isStopping = false
     local decelerationRate = 0
-    if #track.history >= 3 then
+    if #track.history >= 4 then
         local currentSpeed = track.history[1].Magnitude
-        local recentSpeed = track.history[2].Magnitude
-        local olderSpeed = track.history[3].Magnitude
-        decelerationRate = (olderSpeed - currentSpeed) / math.max(olderSpeed, 0.1)
+        local olderSpeed = track.history[4].Magnitude
+        decelerationRate = math.max(0, (olderSpeed - currentSpeed) / math.max(olderSpeed, 0.1))
         
-        -- Detect sudden stop (deceleration > 70% in recent frames)
-        if decelerationRate > 0.7 and currentSpeed < 3 then
+        -- More conservative stop detection (needs to be very slow AND decelerating fast)
+        if decelerationRate > 0.85 and currentSpeed < 2 then
             isStopping = true
         end
     end
     
-    -- Detect sudden direction changes (sharp turns or cuts)
+    -- Detect sudden direction changes (less aggressive)
     local suddenDirectionChange = false
-    if #track.history >= 2 then
+    if #track.history >= 3 then
         local recentDir = track.history[1].Unit
-        local previousDir = track.history[2].Unit
-        local dotProduct = recentDir:Dot(previousDir)
-        -- If direction change is > 90 degrees (dot product < 0), it's a sudden change
-        if dotProduct < 0 then
+        local olderDir = track.history[3].Unit
+        local dotProduct = recentDir:Dot(olderDir)
+        -- Only consider it sudden if direction change is > 120 degrees (more conservative)
+        if dotProduct < -0.5 then
             suddenDirectionChange = true
         end
     end
     
-    -- Advanced predicted velocity: accounts for acceleration AND jerk
-    -- v(t) = v0 + a*t + 0.5*j*t^2
-    local predictionTime = 0.2 -- Look ahead 0.2 seconds
-    local predictedVel = avgVel + (avgAcc * predictionTime) + (track.jerk * 0.5 * predictionTime * predictionTime)
+    -- Simplified predicted velocity (less complex = more stable)
+    local predictionTime = 0.15 -- Shorter look ahead for stability
+    local predictedVel = avgVel + (avgAcc * predictionTime * 0.5) -- Reduced acceleration influence
     
-    -- Adjust for sudden stops - heavily reduce predicted velocity
+    -- Gentle adjustments for stops (less aggressive)
     if isStopping then
-        predictedVel = avgVel * 0.2 -- Almost stop
-    end
-    
-    -- Adjust for sudden direction changes - reduce prediction time
-    if suddenDirectionChange then
-        predictedVel = avgVel * 0.6 + predictedVel * 0.4 -- Blend more toward current velocity
-    end
-    
-    -- Adjust for deceleration - scale down prediction
-    if decelerationRate > 0.3 then
-        local reductionFactor = 1 - (decelerationRate * 0.6)
-        predictedVel = predictedVel * math.max(reductionFactor, 0.3)
+        predictedVel = avgVel * 0.4 -- Less extreme reduction
+    elseif suddenDirectionChange then
+        predictedVel = avgVel * 0.75 + predictedVel * 0.25 -- More conservative blend
+    elseif decelerationRate > 0.4 then
+        local reductionFactor = 1 - (decelerationRate * 0.4) -- Less aggressive reduction
+        predictedVel = predictedVel * math.max(reductionFactor, 0.5)
     end
     
     -- Direction change and turning rate analysis
@@ -4014,25 +4036,40 @@ local function CalculateQBThrow(targetPlayer)
     local trackMag = (track.avgVel and track.avgVel.Magnitude) or 0
 
     local distance = (Vector3.new(receiverPos.X, 0, receiverPos.Z) - Vector3.new(originPos.X, 0, originPos.Z)).Magnitude
+    distance = distance or 0
+    
+    -- Define velocity threshold early
+    local velocityThreshold = 3.0
     
     -- Check if receiver is running away from QB (for better prediction)
     local toReceiver = (receiverPos - originPos)
     local toReceiverDir = toReceiver.Unit
-    local receiverVelDir = track.avgVel.Unit
-    local runningAway = toReceiverDir:Dot(receiverVelDir) > 0.3 -- If velocity is in similar direction as QB->Receiver, they're running away
+    local receiverVelDir = (track.avgVel and track.avgVel.Unit) or Vector3.new(0,0,0)
+    local runningAway = false
+    if track.avgVel and track.avgVel.Magnitude > 0 then
+        runningAway = toReceiverDir:Dot(receiverVelDir) > 0.3
+    end
+    
+    -- Detect lateral movement (running sideways) - when velocity is perpendicular to QB->Receiver direction
+    local lateralMovement = false
+    if (trackMag or 0) > velocityThreshold and track.avgVel and track.avgVel.Magnitude > 0 then
+        local dotProduct = math.abs(toReceiverDir:Dot(receiverVelDir))
+        -- If dot product is low (close to 0), they're moving perpendicular (sideways)
+        if dotProduct < 0.5 then
+            lateralMovement = true
+        end
+    end
 
     local power
-    if distance >= 300 then
+    if (distance or 0) >= 300 then
         power = 120
-    elseif trackMag > 12 or distance > 100 then
+    elseif (trackMag or 0) > 12 or (distance or 0) > 100 then
         power = 100
     else
         power = 80
     end
 
     local flightTime = getFlightTimeFromDistance(power, distance)
-
-    local velocityThreshold = 3.0
     local predictedPos
     local arcY
     local predictionTime
@@ -4044,41 +4081,32 @@ local function CalculateQBThrow(targetPlayer)
         predicted = receiverPos
         predictionTime = 0
     elseif qbThrowMode == "Dime" then
-        -- Dime: Ultra-precise prediction with advanced physics
-        if trackMag > velocityThreshold then
-            -- Adaptive prediction time based on distance and speed
-            local baseMultiplier = 1.08
+        -- Dime: Slightly increased prediction (tiny bit further)
+        if (trackMag or 0) > velocityThreshold then
+            local baseMultiplier = 0.98
             if runningAway then
-                baseMultiplier = 1.25
+                baseMultiplier = 1.12
             end
-            -- Adjust for speed - faster players need more prediction
-            local speedFactor = math.min(track.speed / 20, 0.15)
+            local speedFactor = math.min((track.speed or 0) / 28, 0.07)
             baseMultiplier = baseMultiplier + speedFactor
+            
+            if track.isStopping then
+                baseMultiplier = baseMultiplier * 0.5
+            elseif track.suddenDirectionChange then
+                baseMultiplier = baseMultiplier * 0.75
+            elseif track.decelerationRate and track.decelerationRate > 0.4 then
+                baseMultiplier = baseMultiplier * (1 - track.decelerationRate * 0.3)
+            end
+            
             predictionTime = flightTime * baseMultiplier
-            
-            -- Use advanced predicted velocity (accounts for acceleration and jerk)
             local vel = track.predictedVel or track.avgVel
-            
-            -- Advanced physics: position = current + v*t + 0.5*a*t^2 + (1/6)*j*t^3
             local velocityComponent = vel * predictionTime
-            local accelerationComponent = track.acc * 0.5 * predictionTime * predictionTime
-            local jerkComponent = (track.jerk or Vector3.new(0,0,0)) * (1/6) * predictionTime * predictionTime * predictionTime
-            local basePrediction = receiverPos + velocityComponent + accelerationComponent + jerkComponent
+            local accelerationComponent = (track.acc or Vector3.new(0,0,0)) * 0.32 * predictionTime * predictionTime
+            local basePrediction = receiverPos + velocityComponent + accelerationComponent
             
-            -- Account for angular velocity (turning)
-            if track.angularVelocity and track.angularVelocity > 0.1 then
-                local turnCompensation = track.angularVelocity * predictionTime * 0.3
-                local perpendicular = vel:Cross(Vector3.new(0,1,0)).Unit
-                basePrediction = basePrediction + (perpendicular * turnCompensation)
-            end
-            
-            -- Adaptive lead based on speed and direction change
-            local leadFactor = runningAway and 0.1 or 0.05
-            if track.directionChange and track.directionChange > 0.2 then
-                leadFactor = leadFactor * (1 + track.directionChange * 0.5)
-            end
-            local leadDistance = predictionTime * track.speed * leadFactor
-            local lead = vel.Unit * leadDistance
+            local leadFactor = runningAway and 0.08 or 0.04
+            local leadDistance = predictionTime * (track.speed or 0) * leadFactor
+            local lead = (vel and vel.Magnitude > 0) and (vel.Unit * leadDistance) or Vector3.new(0,0,0)
             
             predicted = basePrediction + lead
         else
@@ -4086,35 +4114,34 @@ local function CalculateQBThrow(targetPlayer)
             predictionTime = 0
         end
     elseif qbThrowMode == "Bullet" then
-        -- Bullet: Ultra-fast with precise minimal prediction
-        if trackMag > velocityThreshold then
-            local baseMultiplier = 1.02
+        -- Bullet: Extremely high prediction to prevent underthrows
+        if (trackMag or 0) > velocityThreshold then
+            local baseMultiplier = 1.7
             if runningAway then
-                baseMultiplier = 1.12
+                baseMultiplier = 1.85
             end
             
-            -- Adjust for stops and sudden changes
+            -- Add speed factor for faster moving targets (increased even more)
+            local speedFactor = math.min((track.speed or 0) / 12, 0.2)
+            baseMultiplier = baseMultiplier + speedFactor
+            
             if track.isStopping then
-                baseMultiplier = baseMultiplier * 0.25
+                baseMultiplier = baseMultiplier * 0.6
             elseif track.suddenDirectionChange then
-                baseMultiplier = baseMultiplier * 0.55
-            elseif track.decelerationRate and track.decelerationRate > 0.3 then
-                baseMultiplier = baseMultiplier * (1 - track.decelerationRate * 0.5)
+                baseMultiplier = baseMultiplier * 0.8
+            elseif track.decelerationRate and track.decelerationRate > 0.4 then
+                baseMultiplier = baseMultiplier * (1 - track.decelerationRate * 0.2)
             end
             
             predictionTime = flightTime * baseMultiplier
-            local vel = track.predictedVel or track.avgVel
-            
-            -- Full physics calculation
+            local vel = track.predictedVel or track.avgVel or Vector3.new(0,0,0)
             local velocityComponent = vel * predictionTime
-            local accelerationComponent = track.acc * 0.5 * predictionTime * predictionTime
-            local jerkComponent = (track.jerk or Vector3.new(0,0,0)) * (1/6) * predictionTime * predictionTime * predictionTime
-            local basePrediction = receiverPos + velocityComponent + accelerationComponent + jerkComponent
+            local accelerationComponent = (track.acc or Vector3.new(0,0,0)) * 0.95 * predictionTime * predictionTime
+            local basePrediction = receiverPos + velocityComponent + accelerationComponent
             
-            -- Minimal lead for bullet
-            local leadFactor = runningAway and 0.06 or 0.03
-            local leadDistance = predictionTime * track.speed * leadFactor
-            local lead = vel.Unit * leadDistance
+            local leadFactor = runningAway and 0.45 or 0.38
+            local leadDistance = predictionTime * (track.speed or 0) * leadFactor
+            local lead = (vel and vel.Magnitude > 0) and (vel.Unit * leadDistance) or Vector3.new(0,0,0)
             
             predicted = basePrediction + lead
         else
@@ -4122,45 +4149,42 @@ local function CalculateQBThrow(targetPlayer)
             predictionTime = 0
         end
     elseif qbThrowMode == "Jump" then
-        -- Jump: High arc with extended ultra-precise prediction
-        if trackMag > velocityThreshold then
-            local baseMultiplier = runningAway and 1.45 or 1.3
-            -- Extra prediction for jump balls
-            local speedFactor = math.min(track.speed / 18, 0.2)
+        -- Jump: Slightly increased prediction (tiny bit further)
+        if (trackMag or 0) > velocityThreshold then
+            local baseMultiplier = runningAway and 1.22 or 1.07
+            local speedFactor = math.min((track.speed or 0) / 28, 0.09)
             baseMultiplier = baseMultiplier + speedFactor
             
-            -- Adjust for stops and sudden changes (but less reduction for jump)
             if track.isStopping then
-                baseMultiplier = baseMultiplier * 0.4
+                baseMultiplier = baseMultiplier * 0.6
             elseif track.suddenDirectionChange then
-                baseMultiplier = baseMultiplier * 0.7
-            elseif track.decelerationRate and track.decelerationRate > 0.3 then
-                baseMultiplier = baseMultiplier * (1 - track.decelerationRate * 0.4)
+                baseMultiplier = baseMultiplier * 0.8
+            elseif track.decelerationRate and track.decelerationRate > 0.4 then
+                baseMultiplier = baseMultiplier * (1 - track.decelerationRate * 0.3)
             end
             
             predictionTime = flightTime * baseMultiplier
-            local vel = track.predictedVel or track.avgVel
+            local vel = track.predictedVel or track.avgVel or Vector3.new(0,0,0)
             
             -- Full physics with extended time
             local velocityComponent = vel * predictionTime
-            local accelerationComponent = track.acc * 0.5 * predictionTime * predictionTime
-            local jerkComponent = (track.jerk or Vector3.new(0,0,0)) * (1/6) * predictionTime * predictionTime * predictionTime
-            local basePrediction = receiverPos + velocityComponent + accelerationComponent + jerkComponent
+            local accelerationComponent = (track.acc or Vector3.new(0,0,0)) * 0.32 * predictionTime * predictionTime
+            local basePrediction = receiverPos + velocityComponent + accelerationComponent
             
-            -- Account for turning during jump
+            -- Account for turning during jump (reduced compensation)
             if track.angularVelocity and track.angularVelocity > 0.1 then
-                local turnCompensation = track.angularVelocity * predictionTime * 0.4
-                local perpendicular = vel:Cross(Vector3.new(0,1,0)).Unit
+                local turnCompensation = track.angularVelocity * predictionTime * 0.2
+                local perpendicular = (vel.Magnitude > 0) and vel:Cross(Vector3.new(0,1,0)).Unit or Vector3.new(0,0,0)
                 basePrediction = basePrediction + (perpendicular * turnCompensation)
             end
             
-            -- Extended lead for jump balls
-            local leadFactor = runningAway and 0.28 or 0.18
+            -- Slightly increased lead for jump balls
+            local leadFactor = runningAway and 0.21 or 0.14
             if track.directionChange and track.directionChange > 0.15 then
-                leadFactor = leadFactor * (1 + track.directionChange * 0.3)
+                leadFactor = leadFactor * (1 + track.directionChange * 0.2)
             end
-            local leadDistance = predictionTime * track.speed * leadFactor
-            local lead = vel.Unit * leadDistance
+            local leadDistance = predictionTime * (track.speed or 0) * leadFactor
+            local lead = (vel and vel.Magnitude > 0) and (vel.Unit * leadDistance) or Vector3.new(0,0,0)
             
             predicted = basePrediction + lead
         else
@@ -4168,44 +4192,41 @@ local function CalculateQBThrow(targetPlayer)
             predictionTime = 0
         end
     elseif qbThrowMode == "Mag" then
-        -- Mag: Moderate ultra-precise prediction for mag feature
-        if trackMag > velocityThreshold then
-            local baseMultiplier = runningAway and 1.18 or 1.08
-            local speedFactor = math.min(track.speed / 22, 0.12)
+        -- Mag: Reduced prediction to prevent overthrows
+        if (trackMag or 0) > velocityThreshold then
+            local baseMultiplier = runningAway and 1.12 or 1.02
+            local speedFactor = math.min((track.speed or 0) / 25, 0.1)
             baseMultiplier = baseMultiplier + speedFactor
             
-            -- Adjust for stops and sudden changes
+            -- Adjust for lateral movement - reduce prediction when running sideways
+            if lateralMovement then
+                baseMultiplier = baseMultiplier * 0.85
+            end
+            
+            -- Gentle adjustments for stops
             if track.isStopping then
-                baseMultiplier = baseMultiplier * 0.35
+                baseMultiplier = baseMultiplier * 0.55
             elseif track.suddenDirectionChange then
-                baseMultiplier = baseMultiplier * 0.65
-            elseif track.decelerationRate and track.decelerationRate > 0.3 then
-                baseMultiplier = baseMultiplier * (1 - track.decelerationRate * 0.45)
+                baseMultiplier = baseMultiplier * 0.75
+            elseif track.decelerationRate and track.decelerationRate > 0.4 then
+                baseMultiplier = baseMultiplier * (1 - track.decelerationRate * 0.3)
             end
             
             predictionTime = flightTime * baseMultiplier
-            local vel = track.predictedVel or track.avgVel
+            local vel = track.predictedVel or track.avgVel or Vector3.new(0,0,0)
             
-            -- Full physics calculation
+            -- Simplified physics calculation (removed jerk for stability)
             local velocityComponent = vel * predictionTime
-            local accelerationComponent = track.acc * 0.5 * predictionTime * predictionTime
-            local jerkComponent = (track.jerk or Vector3.new(0,0,0)) * (1/6) * predictionTime * predictionTime * predictionTime
-            local basePrediction = receiverPos + velocityComponent + accelerationComponent + jerkComponent
+            local accelerationComponent = (track.acc or Vector3.new(0,0,0)) * 0.35 * predictionTime * predictionTime
+            local basePrediction = receiverPos + velocityComponent + accelerationComponent
             
-            -- Account for turning
-            if track.angularVelocity and track.angularVelocity > 0.1 then
-                local turnCompensation = track.angularVelocity * predictionTime * 0.25
-                local perpendicular = vel:Cross(Vector3.new(0,1,0)).Unit
-                basePrediction = basePrediction + (perpendicular * turnCompensation)
+            -- Further reduced lead to prevent overshooting
+            local leadFactor = runningAway and 0.1 or 0.05
+            if lateralMovement then
+                leadFactor = leadFactor * 0.7 -- Less lead when running sideways
             end
-            
-            -- Moderate lead for mag
-            local leadFactor = runningAway and 0.12 or 0.07
-            if track.directionChange and track.directionChange > 0.2 then
-                leadFactor = leadFactor * (1 + track.directionChange * 0.4)
-            end
-            local leadDistance = predictionTime * track.speed * leadFactor
-            local lead = vel.Unit * leadDistance
+            local leadDistance = predictionTime * (track.speed or 0) * leadFactor
+            local lead = (vel and vel.Magnitude > 0) and (vel.Unit * leadDistance) or Vector3.new(0,0,0)
             
             predicted = basePrediction + lead
         else
@@ -4214,30 +4235,21 @@ local function CalculateQBThrow(targetPlayer)
         end
     else
         -- Default to Dime (ultra-precise)
-        if trackMag > velocityThreshold then
+        if (trackMag or 0) > velocityThreshold then
             local baseMultiplier = runningAway and 1.25 or 1.08
-            local speedFactor = math.min(track.speed / 20, 0.15)
+            local speedFactor = math.min((track.speed or 0) / 20, 0.15)
             baseMultiplier = baseMultiplier + speedFactor
             predictionTime = flightTime * baseMultiplier
             local vel = track.predictedVel or track.avgVel
             
             local velocityComponent = vel * predictionTime
-            local accelerationComponent = track.acc * 0.5 * predictionTime * predictionTime
-            local jerkComponent = (track.jerk or Vector3.new(0,0,0)) * (1/6) * predictionTime * predictionTime * predictionTime
-            local basePrediction = receiverPos + velocityComponent + accelerationComponent + jerkComponent
+            local accelerationComponent = (track.acc or Vector3.new(0,0,0)) * 0.4 * predictionTime * predictionTime
+            local basePrediction = receiverPos + velocityComponent + accelerationComponent
             
-            if track.angularVelocity and track.angularVelocity > 0.1 then
-                local turnCompensation = track.angularVelocity * predictionTime * 0.3
-                local perpendicular = vel:Cross(Vector3.new(0,1,0)).Unit
-                basePrediction = basePrediction + (perpendicular * turnCompensation)
-            end
-            
+            -- Simple lead (removed angular compensation for stability)
             local leadFactor = runningAway and 0.1 or 0.05
-            if track.directionChange and track.directionChange > 0.2 then
-                leadFactor = leadFactor * (1 + track.directionChange * 0.5)
-            end
-            local leadDistance = predictionTime * track.speed * leadFactor
-            local lead = vel.Unit * leadDistance
+            local leadDistance = predictionTime * (track.speed or 0) * leadFactor
+            local lead = (vel and vel.Magnitude > 0) and (vel.Unit * leadDistance) or Vector3.new(0,0,0)
             predicted = basePrediction + lead
         else
             predicted = receiverPos
@@ -4246,7 +4258,7 @@ local function CalculateQBThrow(targetPlayer)
     end
 
     -- Calculate arc based on mode, distance, and receiver height for optimal aiming
-    local moveDist = (Vector3.new(predicted.X, originPos.Y, predicted.Z) - Vector3.new(originPos.X, originPos.Y, originPos.Z)).Magnitude
+        local moveDist = (Vector3.new(predicted.X, originPos.Y, predicted.Z) - Vector3.new(originPos.X, originPos.Y, originPos.Z)).Magnitude
     
     -- Get receiver's height (assume HumanoidRootPart is around 2-3 studs from ground for catch height)
     local receiverHeight = predicted.Y
@@ -4254,7 +4266,7 @@ local function CalculateQBThrow(targetPlayer)
     local heightDiff = receiverHeight - originHeight
     
     -- Base arc height from table
-    if trackMag > velocityThreshold then
+    if (trackMag or 0) > velocityThreshold then
         arcY = getArcYFromTable(arcYTable_moving, power, moveDist)
     else
         arcY = getArcYFromTable(arcYTable_stationary, power, distance)
@@ -4273,27 +4285,33 @@ local function CalculateQBThrow(targetPlayer)
         modeMultiplier = 0.65
         distanceAdjustment = math.min(moveDist / 500, 0.35)
     elseif qbThrowMode == "Jump" then
-        -- High arc for jump balls
-        modeMultiplier = 1.8
-        distanceAdjustment = math.min(moveDist / 200, 1.2)
+        -- High arc for jump balls (reduced further to prevent overshooting)
+        modeMultiplier = 1.15
+        distanceAdjustment = math.min(moveDist / 400, 0.5)
     elseif qbThrowMode == "Mag" then
-        -- Moderate arc for mag
-        modeMultiplier = 1.1
-        distanceAdjustment = math.min(moveDist / 350, 0.6)
+        -- Moderate arc for mag (reduced to prevent overthrows)
+        modeMultiplier = 1.05
+        distanceAdjustment = math.min(moveDist / 400, 0.5)
+        
+        -- Reduce arc height when receiver is running sideways to prevent high throws
+        if lateralMovement then
+            modeMultiplier = modeMultiplier * 0.85
+            distanceAdjustment = distanceAdjustment * 0.8
+        end
     else -- Dime
-        -- Balanced arc, adapts to distance
+        -- Balanced arc, adapts to distance (reduced to prevent overthrows)
         if moveDist > 280 then
-            modeMultiplier = 1.25
-            distanceAdjustment = 0.5
+            modeMultiplier = 1.1
+            distanceAdjustment = 0.3
         elseif moveDist > 150 then
-            modeMultiplier = 1.15
-            distanceAdjustment = 0.35
-        elseif moveDist > 80 then
             modeMultiplier = 1.05
             distanceAdjustment = 0.2
-        else
-            modeMultiplier = 0.95
+        elseif moveDist > 80 then
+            modeMultiplier = 1.0
             distanceAdjustment = 0.1
+        else
+            modeMultiplier = 0.9
+            distanceAdjustment = 0.05
         end
     end
     
@@ -4308,9 +4326,13 @@ local function CalculateQBThrow(targetPlayer)
     local minArc = receiverHeight + 1.5 -- 1.5 studs above receiver for catch
     arcY = math.max(arcY, minArc)
     
-    -- For stationary targets, reduce arc slightly to avoid throwing over head
-    if trackMag <= velocityThreshold and qbThrowMode == "Dime" then
-        arcY = arcY - 0.5
+    -- For stationary targets, reduce arc to avoid throwing over head
+    if (trackMag or 0) <= velocityThreshold then
+        if qbThrowMode == "Dime" then
+            arcY = arcY - 0.8
+        elseif qbThrowMode == "Jump" then
+            arcY = arcY - 0.6
+        end
     end
     
     predictedPos = Vector3.new(predicted.X, arcY, predicted.Z)
@@ -4489,21 +4511,21 @@ game:GetService("UserInputService").InputBegan:Connect(function(Input, GameProce
     end
 
     if Input.KeyCode == Enum.KeyCode.G and qbAimbotEnabled then
-        if qbTargetLocked and qbLockedTargetPlayer then
-            qbTargetLocked = false
-            qbLockedTargetPlayer = nil
+            if qbTargetLocked and qbLockedTargetPlayer then
+                qbTargetLocked = false
+                qbLockedTargetPlayer = nil
             LockButton.Text = "LOCK"
-            LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
-        else
-            local closestPlayer = getClosestPlayerInFront()
-            if closestPlayer then
-                qbLockedTargetPlayer = closestPlayer
-                qbTargetLocked = true
+                LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
+            else
+                local closestPlayer = getClosestPlayerInFront()
+                if closestPlayer then
+                    qbLockedTargetPlayer = closestPlayer
+                    qbTargetLocked = true
                 LockButton.Text = "LOCKED"
-                LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+                    LockButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+                end
             end
         end
-    end
     
     if Input.KeyCode == Enum.KeyCode.R and qbAimbotEnabled then
         local modes = {"Line", "Dime", "Bullet", "Jump", "Mag"}
@@ -4520,26 +4542,29 @@ game:GetService("UserInputService").InputBegan:Connect(function(Input, GameProce
     end
 end)
 
--- Main Loop (FAST - 50 updates per second for better target switching)
+-- Main Loop (SMOOTH - 30 updates per second to reduce jitter)
+local qbMainLoopRunning = true
 task.spawn(function()
     local plr = game.Players.LocalPlayer
-    while true do
-        task.wait(0.02)
+    while qbMainLoopRunning do
+        task.wait(0.033) -- ~30 FPS for smoother updates
 
-        local TargetPlayer
-        if qbTargetLocked and qbLockedTargetPlayer and qbLockedTargetPlayer.Character and qbLockedTargetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            TargetPlayer = qbLockedTargetPlayer
-        else
-            TargetPlayer = getClosestPlayerInFront()
-            if qbTargetLocked and not qbLockedTargetPlayer then
-                qbTargetLocked = false
-                LockButton.Text = "LOCK"
-                LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
+        -- Only process if QB aimbot is enabled
+        if qbAimbotEnabled then
+            local TargetPlayer
+            if qbTargetLocked and qbLockedTargetPlayer and qbLockedTargetPlayer.Character and qbLockedTargetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                TargetPlayer = qbLockedTargetPlayer
+            else
+                TargetPlayer = getClosestPlayerInFront()
+                if qbTargetLocked and not qbLockedTargetPlayer then
+                    qbTargetLocked = false
+                    LockButton.Text = "LOCK"
+                    LockButton.BackgroundColor3 = Color3.fromRGB(80, 0, 80)
+                end
             end
-        end
-        qbCurrentTargetPlayer = TargetPlayer
+            qbCurrentTargetPlayer = TargetPlayer
 
-        if TargetPlayer and TargetPlayer.Character and TargetPlayer.Character:FindFirstChild("Head") then
+            if TargetPlayer and TargetPlayer.Character and TargetPlayer.Character:FindFirstChild("Head") then
             local target = TargetPlayer.Character
 
             TargetHighlight.OutlineColor = Color3.fromRGB(153, 51, 255)
@@ -4548,9 +4573,14 @@ task.spawn(function()
             local targetPos, power, flightTime, peakHeight, direction, vel3 = CalculateQBThrow(TargetPlayer)
 
             if targetPos and power and direction then
-                qbData.Position = targetPos
+                -- Smooth the position and direction to prevent jitter
+                local smoothFactor = 0.7 -- Higher = more smoothing (less jitter)
+                qbDataSmooth.Position = qbDataSmooth.Position * (1 - smoothFactor) + targetPos * smoothFactor
+                qbDataSmooth.Direction = qbDataSmooth.Direction * (1 - smoothFactor) + direction * smoothFactor
+                
+                qbData.Position = qbDataSmooth.Position
                 qbData.Power = power
-                qbData.Direction = direction
+                qbData.Direction = qbDataSmooth.Direction.Unit
 
                 ValuePower.Name = tostring(power)
                 ValuePlayer.Name = TargetPlayer.Name
@@ -4588,6 +4618,13 @@ task.spawn(function()
             ValueLocked.Name = "False"
             UpdateTargetHighlight(nil)
             clearAkiBeam()
+        end
+        else
+            -- QB aimbot disabled - cleanup
+            qbCurrentTargetPlayer = nil
+            UpdateTargetHighlight(nil)
+            clearAkiBeam()
+            QBInfoCards.Enabled = false
         end
     end
 end)
@@ -5707,7 +5744,7 @@ end
     })
 
     local KickGroup = Tabs.Automatic:CreateSection('Misc')
-    
+
     Tabs.Automatic:CreateToggle({
         Flag = 'KickAimbot',
         Name = 'Kick Aimbot (L)',
@@ -5730,7 +5767,7 @@ end
         end
     })
 
-local AutoTouchdown = Tabs.Automatic:CreateSection('Touchdown')
+local AutoTouchdown = Tabs.Automatic:CreateSection('Auto Touchdown')
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -5812,7 +5849,7 @@ if p == player then
 end
 end)
 
-Tabs.Player:CreateToggle({
+Tabs.Automatic:CreateToggle({
         Flag = 'AutoTouchdown',
 Name = 'Auto Touchdown',
 CurrentValue = false,
@@ -5940,7 +5977,7 @@ end
             end
         end
     end)
-    
+
     local KICKLIST_URL = "https://pastebin.com/raw/Yvyb4pLt"
     local BLACKLIST_URL = "https://pastebin.com/raw/DjazvQVU"
 
@@ -6129,7 +6166,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-Tabs.Player:CreateToggle({
+Tabs.Automatic:CreateToggle({
         Flag = 'AutoCatch',
     Name = 'Auto Catch',
     CurrentValue = false,
@@ -6139,7 +6176,7 @@ Tabs.Player:CreateToggle({
     end
 })
 
-Tabs.Main:CreateSlider({
+Tabs.Automatic:CreateSlider({
         Flag = 'AutoCatchSlider',
     Name = 'Radius',
     CurrentValue = 0,
